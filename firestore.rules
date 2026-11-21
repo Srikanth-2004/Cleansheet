@@ -1,0 +1,321 @@
+rules_version = '2';
+
+// ===============================================================
+// CleanSheet Cloud Firestore Security Rules
+// ===============================================================
+//
+// Security Architecture:
+//   Client applications NEVER perform business writes directly.
+//   Fee creation, checkout reservation, payment verification/application,
+//   contact OTP verification, outreach consent, subscription keep/cancel
+//   decisions, and refund approvals all execute through authenticated server
+//   routes using Firebase Admin / server credentials (which bypass Security
+//   Rules after server-side token verification and role/scope enforcement).
+//
+//   Accordingly, `allow write: if false;` is enforced on EVERY collection,
+//   and unmatched paths (including all subcollections) are default-denied.
+//   Authenticated clients are granted strictly scoped, least-privilege read
+//   access to only their authorized records.
+//
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: actors
+// Document ID: {uid} (Firebase Auth UID)
+// Purpose: Server-seeded identity and academy-role mapping (contains PII).
+// Fields:
+//   - uid: string (required, 1..128 chars, matches document ID)
+//   - email: string (optional/required, PII)
+//   - role: string (required, 'coach' | 'parent')
+//   - academyId: string (optional)
+//   - academyName: string (required)
+//   - teamName: string (required)
+//   - playerId: string (required)
+//   - playerName: string (required)
+//   - customer: map (optional, parent PII: { id, name, email, phone })
+//
+// Collection: academies
+// Document ID: {academyId}
+// Purpose: Server-resolved academy, squad, player, and Cashfree plan config.
+// Fields:
+//   - id: string (required)
+//   - academyName: string (required)
+//   - teamName: string (required)
+//   - coachUid: string (required, 1..128 chars)
+//   - playerId: string (required)
+//   - playerName: string (required)
+//   - planId: string (optional, Cashfree subscription plan reference)
+//
+// Collection: fees
+// Document ID: {feeId} (e.g., "{playerId}-{YYYY-MM}")
+// Purpose: Monthly player fee records created on coach confirmation.
+// Fields:
+//   - id: string (required)
+//   - academyId: string (optional)
+//   - coachUid: string (required, 1..128 chars)
+//   - parentUid: string (required, 1..128 chars)
+//   - playerId: string (required)
+//   - playerName: string (required)
+//   - period: string (required, YYYY-MM)
+//   - amountPaise: int (required, > 0)
+//   - currency: string (required, 'INR')
+//   - status: string (required, 'unpaid' | 'processing' | 'paid')
+//   - providerPaymentId: string (optional)
+//   - paymentRail: string (optional, 'pg' | 'subscription')
+//   - refundedPaise: int (optional, >= 0)
+//
+// Collection: checkouts
+// Document ID: {orderId} (server-generated Cashfree PG order reference)
+// Purpose: Parent-scoped PG checkout reservations (contains customer PII).
+// Fields:
+//   - orderId: string (required)
+//   - feeId: string (required)
+//   - parentUid: string (required, 1..128 chars)
+//   - amountPaise: int (required, > 0, matches stored fee)
+//   - currency: string (required, 'INR')
+//   - customer: map (required, PII: { id, name, email, phone })
+//   - paymentSessionId: string (optional)
+//
+// Collection: subscriptions
+// Document ID: {subId} (e.g., player/subscription ID)
+// Purpose: Cashfree on-demand mandate state for recurring monthly fees.
+// Fields:
+//   - id: string (required)
+//   - playerId: string (required)
+//   - coachUid: string (required, 1..128 chars)
+//   - parentUid: string (required, 1..128 chars)
+//   - status: string (required, 'authorising' | 'active' | 'cancel_pending' | 'cancelled' | 'needs_review')
+//   - nextDueAt: string | null (optional, ISO UTC timestamp)
+//   - currentCycleId: string (optional)
+//   - providerSubscriptionId: string (optional)
+//   - providerStatus: string (optional)
+//   - cancelledAt: string (optional, ISO UTC timestamp)
+//
+// Collection: billingCycles
+// Document ID: {cycleId} (route-safe cycle ID, e.g., "cycle-u12-2026-11")
+// Purpose: Monthly subscription billing cycle state and parent decisions.
+// Fields:
+//   - id: string (required)
+//   - playerId: string (required)
+//   - coachUid: string (required, 1..128 chars)
+//   - parentUid: string (required, 1..128 chars)
+//   - period: string (required, YYYY-MM)
+//   - amountPaise: int (required, > 0)
+//   - dueAt: string (required, ISO UTC timestamp)
+//   - cutoffAt: string (required, ISO UTC timestamp)
+//   - status: string (required, 'awaiting_decision' | 'decision_recorded' | 'charge_scheduled' | 'processing' | 'paid' | 'failed' | 'recovery_available' | 'closed' | 'needs_review')
+//   - decision: string (optional, 'keep' | 'cancel_subscription')
+//   - decidedAt: string (optional, ISO UTC timestamp)
+//   - recoveryUrl: string | null (optional)
+//   - providerSubscriptionId: string (optional)
+//   - merchantPaymentId: string (optional)
+//   - lastPaymentOutcome: string (optional, 'succeeded' | 'retry_pending' | 'failed_final')
+//   - paymentObservedAt: string (optional, ISO UTC timestamp)
+//
+// Collection: refundCases
+// Document ID: {caseId} (route-safe refund case reference)
+// Purpose: Coach-scoped refund triage and provider reconciliation records.
+// Fields:
+//   - caseId: string (required)
+//   - feeId: string (required)
+//   - playerId: string (required)
+//   - coachUid: string (required, 1..128 chars)
+//   - rail: string (required, 'pg' | 'subscription')
+//   - providerPaymentId: string (required)
+//   - status: string (required, 'requested' | 'processing' | 'refunded' | 'failed')
+//   - refundId: string | null (optional)
+//   - amountPaise: int | null (optional, > 0)
+//   - approvedBy: string (optional, coach UID)
+//   - resolvedAt: string (optional, ISO UTC timestamp)
+//
+// Collection: notifications
+// Document ID: {notificationId} (e.g., "payment-completed-{feeId}" or "notif-cancel-...")
+// Purpose: Idempotent coach payment, cancellation, and refund notifications.
+// Fields:
+//   - id: string (required)
+//   - coachUid: string (required, 1..128 chars)
+//   - kind: string (required, 'payment_completed' | 'payment_succeeded' | 'subscription_cancelled' | 'refund_approved')
+//   - subjectLabel: string (required)
+//   - amountPaise: int (optional, > 0)
+//   - occurredAt: string (required, ISO UTC timestamp)
+//
+// Collection: contacts
+// Document ID: {uid} (parent Firebase Auth UID)
+// Purpose: Secure ID contact verification state and outreach consent (contains PII).
+// Fields:
+//   - parentUid: string (optional/recommended, 1..128 chars, matches {uid})
+//   - challengeId: string (optional)
+//   - maskedPhone: string (optional)
+//   - status: string (required, 'unverified' | 'pending' | 'verified' | 'blocked')
+//   - step: string (optional, 'sending' | 'ready' | 'verifying' | 'done')
+//   - expiresAt: int (optional, epoch ms)
+//   - resendAfter: int (optional, epoch ms)
+//   - attempts: int (optional)
+//   - consentAt: string (optional, ISO UTC timestamp)
+//   - consentVersion: string (optional)
+//   - verifiedAt: string (optional, ISO UTC timestamp)
+//   - providerReference: string (optional)
+//   - outreachConsent: string (optional, 'granted' | 'withheld')
+//   - outreachConsentVersion: string (optional)
+//   - outreachRecordedAt: string (optional, ISO UTC timestamp)
+//
+// ===============================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+
+    // Safely validate that a UID value is a non-empty string within Firebase Auth's 128-char limit.
+    function isValidUid(uid) {
+      return uid is string &&
+        uid.size() > 0 &&
+        uid.size() <= 128;
+    }
+
+    // Verify the request has a valid Firebase Auth context with a well-formed string UID.
+    function isAuthenticated() {
+      return request.auth != null &&
+        isValidUid(request.auth.uid);
+    }
+
+    // Verify the authenticated caller's UID matches the path/target user ID.
+    function isOwner(uid) {
+      return isAuthenticated() &&
+        isValidUid(uid) &&
+        request.auth.uid == uid;
+    }
+
+    // Safely verify on single-document gets that `resource.data[fieldName]` exists,
+    // is a non-empty string, and equals the authenticated caller's UID.
+    // Guarding `resource != null`, `is map`, `in resource.data`, and `is string`
+    // ensures missing optional/peer fields do not short-circuit an `||` branch with an error.
+    function hasMatchingUidField(fieldName) {
+      return isAuthenticated() &&
+        resource != null &&
+        resource.data is map &&
+        fieldName is string &&
+        fieldName in resource.data &&
+        isValidUid(resource.data[fieldName]) &&
+        resource.data[fieldName] == request.auth.uid;
+    }
+
+    function isCoachGetOwner() {
+      return hasMatchingUidField('coachUid');
+    }
+
+    function isParentGetOwner() {
+      return hasMatchingUidField('parentUid');
+    }
+
+    function isCoachOrParentGetOwner() {
+      return isCoachGetOwner() || isParentGetOwner();
+    }
+
+    // Query-analyzer-friendly UID constraints for `list` queries.
+    // Because `isAuthenticated()` guarantees `request.auth.uid` is a non-empty string,
+    // only documents whose `coachUid` / `parentUid` equals that exact string can match.
+    function isCoachListOwner() {
+      return isAuthenticated() &&
+        resource.data.coachUid == request.auth.uid;
+    }
+
+    function isParentListOwner() {
+      return isAuthenticated() &&
+        resource.data.parentUid == request.auth.uid;
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // Default-deny all unmatched paths and nested subcollections.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Admin-SDK-only namespaced scenario documents used by Cloud Functions.
+    match /scenarios/{scenario}/{document=**} {
+      allow read, write: if false;
+    }
+
+    // Actor identity profiles contain role mappings and parent PII.
+    // Users may `get` only their own document; collection `list` is prohibited to prevent enumeration.
+    // Client writes are disabled: actor provisioning and role assignment occur strictly server-side.
+    match /actors/{uid} {
+      allow get: if isOwner(uid);
+      allow list: if false;
+      allow write: if false;
+    }
+
+    // Academy, squad, and subscription plan metadata are resolved server-side via /api/me and backend routes.
+    // Client reads and writes are both disabled under least privilege.
+    match /academies/{academyId} {
+      allow read: if false;
+      allow write: if false;
+    }
+
+    // Monthly fees may be read only by the scoped coach or linked parent.
+    // Client writes are disabled: fee creation, status transitions, and payment application are server-only.
+    match /fees/{feeId} {
+      allow get: if isCoachOrParentGetOwner();
+      allow list: if isCoachListOwner() || isParentListOwner();
+      allow write: if false;
+    }
+
+    // Checkout orders contain parent customer PII and server-locked payment amounts.
+    // Only the owning parent may read; coaches and other users cannot read checkout sessions.
+    // Client writes are disabled: checkout reservation and order verification run exclusively on the server.
+    match /checkouts/{orderId} {
+      allow get: if isParentGetOwner();
+      allow list: if isParentListOwner();
+      allow write: if false;
+    }
+
+    // Subscriptions may be read only by the scoped coach or linked parent.
+    // Client writes are disabled: mandate enrolment, cancellation, and webhook projection are server-only.
+    match /subscriptions/{subId} {
+      allow get: if isCoachOrParentGetOwner();
+      allow list: if isCoachListOwner() || isParentListOwner();
+      allow write: if false;
+    }
+
+    // Billing cycles may be read only by the scoped coach or linked parent.
+    // Client writes are disabled: cycle generation, keep/cancel decisions, and charge outcomes are server-only.
+    match /billingCycles/{cycleId} {
+      allow get: if isCoachOrParentGetOwner();
+      allow list: if isCoachListOwner() || isParentListOwner();
+      allow write: if false;
+    }
+
+    // Refund cases are coach-scoped operational records.
+    // Only the scoped coach may read; parents and other users cannot read refund cases.
+    // Client writes are disabled: refund case creation, coach approval, and reconciliation are server-only.
+    match /refundCases/{caseId} {
+      allow get: if isCoachGetOwner();
+      allow list: if isCoachListOwner();
+      allow write: if false;
+    }
+
+    // Payment notifications are coach-scoped operational records.
+    // Only the scoped coach may read.
+    // Client writes are disabled: notifications are written idempotently by verified payment projection on the server.
+    match /notifications/{notificationId} {
+      allow get: if isCoachGetOwner();
+      allow list: if isCoachListOwner();
+      allow write: if false;
+    }
+
+    // Contact verification and outreach consent records contain parent PII and OTP challenge state.
+    // Only the owning parent (by document ID `uid` or `parentUid`) may read.
+    // Client writes are disabled: Secure ID OTP start/verify and outreach consent updates are server-only.
+    match /contacts/{uid} {
+      allow get: if isOwner(uid) || isParentGetOwner();
+      allow list: if (isAuthenticated() && request.auth.uid == uid) || isParentListOwner();
+      allow write: if false;
+    }
+  }
+}

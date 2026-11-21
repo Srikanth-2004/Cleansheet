@@ -4,9 +4,13 @@
 
 **Release duty** Provide payment evidence to [CS-08 · Release QA](../tickets/CS-08-release-qa.md).
 
+## Current assignment
+
+Own [CS-03 gateway](../tickets/CS-03-cashfree-checkout.md) and [CS-09 subscriptions](../tickets/CS-09-subscription-lifecycle.md), including payment links, product-specific signed webhook adapters, and original-rail refund calls. Smoke-test PG first, then the mandate, cancellation and test charge timing. Feed Backend verified provider events and give Frontend the hosted URLs and fixture IDs. Help Backend obtain Secure ID sandbox access. Relay configuration and voice delivery belong to the Sarvam / Relay owner.
+
 ## Start independently
 
-1. Smoke-test Cashfree Sandbox order creation, hosted checkout, and a trusted provider status lookup using a test order. Use a fake implementation of the [payment store seam](../docs/CONTRACT.md#server-seam) while Backend builds Firebase.
+1. Smoke-test Cashfree Sandbox order creation, hosted checkout, and a trusted provider status lookup using a test order. Use a fake implementation of the [payment store seam](../docs/CONTRACT.md#server-seam) while Backend builds the Firestore store.
 2. Own the Cashfree adapter and `POST /api/fees/[id]/checkout` and `POST /api/orders/[id]/verify`. Resolve the stored fee, reuse the reserved order on repeat attempts, and return the checkout session to Frontend.
 3. Verify a successful payment against the authorised sandbox order, stored amount, and currency before applying it. Keep unresolved outcomes in the checking flow. Coordinate the hosted return path and recheck behavior with Frontend.
 

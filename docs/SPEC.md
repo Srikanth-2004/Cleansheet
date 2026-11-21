@@ -1,5 +1,7 @@
 # CleanSheet sprint specification
 
+The [Relay backend plan](BACKEND_RELAY.md) sets the current scope for subscriptions, recovery, Secure ID and refunds. The original one-time checkout flow below is the first integration checkpoint and provides the base app screens and sign-in flow.
+
 **Event** Cashfree × Sarvam AI Buildathon, Bengaluru, Saturday 21 November 2026. Times in this pack are IST. The sprint runs from 12:30 to 4:00 PM with lunch from 1:30 to 2:15 PM. The opening briefing and organiser updates govern track and submission rules. [Published agenda and ground rules](https://luma.com/azuhrzuj)
 
 ## Demo outcome
@@ -14,13 +16,13 @@
 
 | Area | Sprint scope |
 |---|---|
-| App | One Next.js App Router application with TypeScript on Vercel. A coach dashboard, a parent fee page, and a sign-in entry point. English labels, one rehearsed desktop browser, responsive layout for both roles. |
-| Identity and storage | Firebase Google sign-in and Firestore. Seed one academy, one squad, one invented player, one authorised coach, and one linked parent per scenario. Keep business writes behind server routes. |
+| App | A TypeScript Firebase HTTPS function exposes the backend API. A coach dashboard, a parent fee page, and a sign-in entry point. English labels, one rehearsed desktop browser, responsive layout for both roles. |
+| Identity and storage | Firebase Auth and Firestore. Seed one academy, one squad, one invented player, one authorised coach, and one linked parent per scenario. Keep business writes behind server routes. |
 | Raz | Sarvam `saaras:v4` transcription and `sarvam-105b` with one permitted fee-preview tool. Validate the proposal on the server. |
 | Payment | Cashfree PG Sandbox hosted checkout. Create an order for a stored fee, verify the provider on return or recheck, and apply success once. |
 | Release | Real sandbox transaction, verified deployed build, short demo recording, and a four-slide pitch if the briefing calls for one. |
 
-Keep full academy onboarding, roster editing, parent invites and review, TTS, full localisation, expense tracking, recurring rent, and scheduling on the roadmap. Signed payment webhooks and manual turf payout are stretch work after the complete fee flow passes. Payout depends on a verified sandbox beneficiary, funding source, and status lookup. If the briefing requires payouts, replace the collection story with one confirmed voice-to-payout flow and update the affected tickets and contract before implementation. The Sarvam owner confirms whether the track accepts sandbox proof as part of [CS-07](../tickets/CS-07-pitch-and-submission.md).
+Keep full academy onboarding, roster editing, parent invites and review, full localisation, expense tracking, and recurring turf rent on the roadmap. The recurring **fee** workflow and signed billing webhooks are covered in the [Relay plan](BACKEND_RELAY.md). The Sarvam / Relay owner confirms sandbox and access constraints as part of [CS-07](../tickets/CS-07-pitch-and-submission.md).
 
 ## Demo data and visuals
 
@@ -32,7 +34,7 @@ Keep full academy onboarding, roster editing, parent invites and review, TTS, fu
 
 | When | Evidence or decision |
 |---|---|
-| Before the timed sprint | Confirm repo and Vercel access, Google sign-in and the intended host, test accounts, Sarvam access, and Cashfree Sandbox checkout and verification access. Use only preparation permitted by organisers. Test video export and confirm submission requirements. |
+| Before the timed sprint | Confirm repo and Firebase access, Firebase Auth sign-in and the HTTPS function URL, test accounts, Sarvam access, and Cashfree Sandbox checkout and verification access. Use only preparation permitted by organisers. Test video export and confirm submission requirements. |
 | 12:30 PM | Confirm scope and claim the starter tickets on the [board](../tickets/README.md). Backend publishes the scaffold, Frontend builds against fixtures, and Cashfree and Sarvam smoke-test their providers in parallel. |
 | 1:30 PM | Target one server-verified sandbox payment from the deployed smoke flow. Keep payment work on the critical path if this slips. |
 | 2:40 PM | Target the joined Raz → confirm → pay → dashboard flow in a fresh scenario. Use the typed Sarvam fallback if recording fails. |

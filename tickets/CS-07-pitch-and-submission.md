@@ -1,6 +1,6 @@
 # CS-07 · Pitch and submission
 
-**Owner** [Sarvam](../roles/04-sarvam.md) · **Start dependency** Event briefing and team details
+**Owner** `@jv-013` ([Sarvam](../roles/04-sarvam.md)) · **Status** `CLAIMED` (`deliverables/release/cs-07-pitch-deck.md`) · **Start dependency** Event briefing and team details
 
 ## Work
 

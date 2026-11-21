@@ -1,0 +1,29 @@
+{
+  "name": "cleansheet-firebase-functions",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "engines": {
+    "node": "26"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "seed:demo": "node --env-file-if-exists=.env --import tsx scripts/seed-demo.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.4.0",
+    "@modelcontextprotocol/server": "2.4.0",
+    "firebase-admin": "^13.0.0",
+    "firebase-functions": "^7.0.0",
+    "sarvamai": "^1.1.21",
+    "zod": "4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0"
+  }
+}

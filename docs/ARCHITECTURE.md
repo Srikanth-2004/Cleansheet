@@ -1,8 +1,30 @@
 # Architecture and execution diagrams
 
-See the [sprint spec](SPEC.md) for scope and timing and the [shared contract](CONTRACT.md) for interfaces.
+See the [sprint spec](SPEC.md), the active [Relay backend plan](BACKEND_RELAY.md), and the [Relay integration contract](RELAY_CONTRACT.md).
 
-## App architecture
+## Relay and recurring fees
+
+```mermaid
+flowchart LR
+    Parent["Linked parent"] -->|Consent and authenticated choice| App["Firebase API"]
+    Coach["Coach"] -->|Review records and approve refunds| App
+    App <-->|Verification reference| Secure["Cashfree Secure ID"]
+    App -->|Authorise, schedule or cancel| Sub["Cashfree Subscriptions"]
+    App -->|Checkout, recovery link or refund| PG["Cashfree Payment Gateway"]
+    Sub -->|Signed outcome| Adapter["Cashfree webhook adapter"]
+    PG -->|Signed outcome| Adapter
+    Adapter -->|Verified event and Google service identity| Events["Private billingEvents function"]
+    App <-->|Billing state and auditable actions| Store[("Firestore")]
+    Events -->|Project verified outcomes| Store
+    App -->|Approved action via supported setup| Relay["Cashfree Relay with Sarvam voice"]
+    Relay -->|Reminder or eligible retry| Parent
+    Relay -->|Confirmed cancellation call| Coach
+    App -->|Verified payment notification| Coach
+```
+
+The Relay route and observed outcomes depend on merchant access. The backend owns financial state and verifies Cashfree events.
+
+## Base app and first payment checkpoint
 
 ```mermaid
 flowchart LR
@@ -10,7 +32,7 @@ flowchart LR
     Parent["Parent UI"]
     Auth["Firebase Auth"]
 
-    subgraph App["Next.js on Vercel"]
+    subgraph App["Firebase HTTPS API"]
         Raz["Raz fee preview"]
         Fees["Fee creation and dashboard"]
         Payment["Checkout and payment verification"]
@@ -22,7 +44,7 @@ flowchart LR
 
     Coach -->|Sign in| Auth
     Parent -->|Sign in| Auth
-    Coach -->|Audio or text and ID token| Raz
+    Coach -->|Local Next.js forwards audio or text and Firebase ID token| Raz
     Raz <-->|Transcription and fee proposal| Sarvam
     Raz -->|Fee preview| Coach
     Coach -->|Confirm fee| Fees
@@ -50,7 +72,7 @@ flowchart TD
     Start --> UI["Frontend · CS-05 build both screens with fixtures"]
     Start --> Voice["Sarvam · CS-04 test Raz with a sample clip"]
 
-    Base -->|Merge base| Store["CS-02 · Firebase access and seeded fee state"]
+    Base -->|Merge base| Store["CS-02 · Firebase Auth and seeded fee state"]
     Store --> Smoke["1:30 PM target · Verify one deployed sandbox checkout"]
     Pay --> Smoke
     UI -->|Checkout screen| Smoke

@@ -1,6 +1,6 @@
 # CS-04 · Raz fee preview
 
-**Owner** [Sarvam](../roles/04-sarvam.md) · **Start dependency** Sarvam key and one sample utterance
+**Owner** `@jv-013` ([Sarvam](../roles/04-sarvam.md)) · **Status** `MERGEABLE` (branch `cs-05-coach-and-parent-ui`) · **Start dependency** Sarvam key and one sample utterance
 
 ## Work
 
@@ -10,8 +10,10 @@
 
 ## Acceptance and handoff
 
-- [ ] The sample voice clip and its typed equivalent produce the expected ₹1,500 preview.
-- [ ] Ambiguous or invalid input prompts a retry and creates zero fee records.
+- [ ] The sample voice clip and its typed equivalent produce the expected ₹1,500 preview. *(Typed Hindi & Kannada verified live on `sarvam-105b`; `saaras:v4` STT endpoint verified; Lambda handler wired with `getActor` & multipart tests.)*
+- [x] Ambiguous or invalid input prompts a retry and creates zero fee records.
 - [ ] Share the language, sample utterance, response, and observed test outcome with [CS-05](CS-05-coach-and-parent-ui.md) and [CS-08](CS-08-release-qa.md).
 
-Work can start independently of [CS-03](CS-03-cashfree-checkout.md). Hosted acceptance uses the [CS-01](CS-01-scaffold-and-deploy.md) deploy, the [CS-02](CS-02-firebase-and-fee-state.md) auth helper, and the CS-05 inputs. [Sarvam tool-calling reference](https://docs.sarvam.ai/api/token-factory/chat-completions#tool-calling-function-calling)
+**Handoff note:** `CS-04 | @jv-013 | MERGEABLE | branch: cs-05-coach-and-parent-ui | src/lib/providers/sarvam.ts wired into src/lambda.ts & /api/raz/fee-preview; npm test & smoke:sarvam passed | Blocker for VERIFIED: SarvamSecretArn on AWS stack & live mic test`
+
+Work can start independently of [CS-03](CS-03-cashfree-checkout.md). Hosted acceptance uses the [CS-01](CS-01-scaffold-and-deploy.md) deploy, the [CS-02](CS-02-auth-and-fee-state.md) auth helper, and the CS-05 inputs. [Sarvam tool-calling reference](https://docs.sarvam.ai/api/token-factory/chat-completions#tool-calling-function-calling)

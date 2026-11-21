@@ -3,6 +3,7 @@
 ## Start work
 
 - Read [the sprint spec](docs/SPEC.md), [the shared contract](docs/CONTRACT.md), and your [role file](README.md#four-person-split). Open the assigned file in [the ticket board](tickets/README.md). The ticket and contract define the event-day implementation.
+- For subscription, Relay, recovery, or refund work, also use the [backend plan](docs/BACKEND_RELAY.md) and [Relay contract](docs/RELAY_CONTRACT.md). Record merchant access checks before wiring provider-specific Relay triggers or callbacks.
 - Check the current branch, claimed owner, and latest handoff. Work within the assigned ticket’s paths. Use one branch per implementation ticket. Discuss a shared contract change with the contract owner and affected consumers before changing both sides.
 - Start with the ticket’s fixture or provider smoke path if another builder’s work is pending. Match the contract exactly so fixtures can be replaced without UI or API rewrites.
 

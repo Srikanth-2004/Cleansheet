@@ -1,13 +1,17 @@
 # Person 2 · Backend
 
-**Primary tickets** [CS-01 · Scaffold and deploy](../tickets/CS-01-scaffold-and-deploy.md), then [CS-02 · Firebase and fee state](../tickets/CS-02-firebase-and-fee-state.md)
+**Primary tickets** [CS-01 · Scaffold and deploy](../tickets/CS-01-scaffold-and-deploy.md), then [CS-02 · Firebase Auth and fee state](../tickets/CS-02-auth-and-fee-state.md)
 
 **Release duty** [CS-08 · Integration and release QA](../tickets/CS-08-release-qa.md)
 
+## Current assignment
+
+Own [CS-12 billing state and refunds](../tickets/CS-12-billing-state-and-refunds.md) and [CS-11 Secure ID](../tickets/CS-11-secure-id-contact.md) after the scaffold and base auth land. Start state projection against the [Relay fixtures](../docs/RELAY_CONTRACT.md#fixture-scenarios). Own authenticated parent decisions, cycle reservation, verified event projection, coach notifications, contact consent, and refund approval. Give Cashfree the approved actions and Sarvam / Relay the deduplicated outreach intents. Secure ID provider checks can run independently of the ledger. If Raz needs payment totals, publish the scoped read-only MCP tool after the core read path works.
+
 ## Start independently
 
-1. Publish the smallest buildable Next.js scaffold and deploy it. Share the merge-base commit and host early so other builders can integrate without waiting for the data layer.
-2. Own root config, deployment, `src/contracts/`, Firebase Admin, the server store and seed, and identity/fee/summary routes. Follow the [contract](../docs/CONTRACT.md). Wire sign-in and access for the coach and linked parent, and seed distinct smoke and filming scenarios.
+1. Publish the smallest buildable TypeScript Firebase Functions scaffold and deploy it. Share the merge-base commit and host early so other builders can integrate without waiting for the data layer.
+2. Own root config, deployment, `functions/src/contracts/`, the Firebase ID-token verification, the server store and seed, and identity/fee/summary routes. Follow the [contract](../docs/CONTRACT.md). Wire sign-in and access for the coach and linked parent, and seed distinct smoke and filming scenarios.
 3. Implement the auth helper, checkout store seam, and atomic fee and payment writes. Keep the provider requests in the Cashfree and Sarvam owners' modules.
 
 ## Handoffs
