@@ -1,8 +1,28 @@
 # Architecture and execution diagrams
 
-See the [sprint spec](SPEC.md) for scope and timing and the [shared contract](CONTRACT.md) for interfaces.
+See the [sprint spec](SPEC.md), the active [Relay backend plan](BACKEND_RELAY.md), and the [Relay integration contract](RELAY_CONTRACT.md).
 
-## App architecture
+## Relay and recurring fees
+
+```mermaid
+flowchart LR
+    Parent["Linked parent"] -->|Consent and authenticated choice| App["CleanSheet backend"]
+    Coach["Coach"] -->|Review records and approve refunds| App
+    App <-->|Verification reference| Secure["Cashfree Secure ID"]
+    App -->|Authorise, schedule or cancel| Sub["Cashfree Subscriptions"]
+    App -->|Checkout, recovery link or refund| PG["Cashfree Payment Gateway"]
+    Sub -->|Signed outcome| App
+    PG -->|Signed outcome| App
+    App <-->|Billing state and auditable actions| Store[("Firestore")]
+    App -->|Approved action via supported setup| Relay["Cashfree Relay with Sarvam voice"]
+    Relay -->|Reminder or eligible retry| Parent
+    Relay -->|Confirmed cancellation call| Coach
+    App -->|Verified payment notification| Coach
+```
+
+The Relay route and observed outcomes depend on merchant access. The backend owns financial state and verifies Cashfree events.
+
+## Base app and first payment checkpoint
 
 ```mermaid
 flowchart LR

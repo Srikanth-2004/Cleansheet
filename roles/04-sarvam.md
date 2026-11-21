@@ -1,8 +1,12 @@
-# Person 4 · Sarvam integration
+# Person 4 · Sarvam and Cashfree Relay
 
 **Primary ticket** [CS-04 · Raz fee preview](../tickets/CS-04-raz-fee-preview.md)
 
 **Release duty** [CS-07 · Pitch and submission](../tickets/CS-07-pitch-and-submission.md)
+
+## Current assignment
+
+Pick up [CS-10 Relay and voice](../tickets/CS-10-relay-and-voice.md) at kickoff and check account access while the other three owners work. Own the parent pre-charge decision prompt, eligible recovery call and link delivery, coach cancellation call, and Relay refund triage. Prepare the call scripts and fixture outcomes without waiting for live payment events. Use approved contacts and supported provider workflows. Give Backend the actual Relay trigger and result contract or dashboard evidence. Keep CS-04 for the coach's Raz preview and optional scoped MCP reads after the base flow works.
 
 ## Start independently
 

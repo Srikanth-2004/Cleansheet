@@ -4,6 +4,10 @@
 
 **Release duty** [CS-08 · Integration and release QA](../tickets/CS-08-release-qa.md)
 
+## Current assignment
+
+Own [CS-12 billing state and refunds](../tickets/CS-12-billing-state-and-refunds.md) and [CS-11 Secure ID](../tickets/CS-11-secure-id-contact.md) after the scaffold and base auth land. Start state projection against the [Relay fixtures](../docs/RELAY_CONTRACT.md#fixture-scenarios). Own authenticated parent decisions, cycle reservation, verified event projection, coach notifications, contact consent, and refund approval. Give Cashfree the approved actions and Sarvam / Relay the deduplicated outreach intents. Secure ID provider checks can run independently of the ledger. If Raz needs payment totals, publish the scoped read-only MCP tool after the core read path works.
+
 ## Start independently
 
 1. Publish the smallest buildable Next.js scaffold and deploy it. Share the merge-base commit and host early so other builders can integrate without waiting for the data layer.

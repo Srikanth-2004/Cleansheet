@@ -7,6 +7,7 @@
 - Own the UI routes and components, Firebase browser client, audio recorder, and local fixture mode. Start from the [fixture examples](../docs/CONTRACT.md#fixture-handoff) and use the [sprint visuals](../docs/SPEC.md#demo-data-and-visuals).
 - Build the sign-in entry, coach dashboard, and parent fee screen. Coach flow is record/type, preview, confirm, and refresh collections. Parent flow is view linked fee, pay on hosted checkout, return to checking, and verify or recheck.
 - Match real and fixture response shapes. Turn on the Cashfree control as soon as the sandbox session route is available so release QA can run the smoke payment before the voice work lands.
+- Use the [billing fixtures](../docs/RELAY_CONTRACT.md#fixture-scenarios) to add parent verification, mandate entry and keep/cancel controls. Show coach payment notifications, cancellation and refund statuses, and a scoped refund approval control. Preserve pending states and identify simulated outcomes in the demo.
 
 ## Acceptance and handoff
 

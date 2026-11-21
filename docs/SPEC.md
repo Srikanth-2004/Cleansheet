@@ -1,5 +1,7 @@
 # CleanSheet sprint specification
 
+The [Relay backend plan](BACKEND_RELAY.md) sets the current scope for subscriptions, recovery, Secure ID and refunds. The original one-time checkout flow below is the first integration checkpoint and provides the base app screens and sign-in flow.
+
 **Event** Cashfree × Sarvam AI Buildathon, Bengaluru, Saturday 21 November 2026. Times in this pack are IST. The sprint runs from 12:30 to 4:00 PM with lunch from 1:30 to 2:15 PM. The opening briefing and organiser updates govern track and submission rules. [Published agenda and ground rules](https://luma.com/azuhrzuj)
 
 ## Demo outcome
@@ -20,7 +22,7 @@
 | Payment | Cashfree PG Sandbox hosted checkout. Create an order for a stored fee, verify the provider on return or recheck, and apply success once. |
 | Release | Real sandbox transaction, verified deployed build, short demo recording, and a four-slide pitch if the briefing calls for one. |
 
-Keep full academy onboarding, roster editing, parent invites and review, TTS, full localisation, expense tracking, recurring rent, and scheduling on the roadmap. Signed payment webhooks and manual turf payout are stretch work after the complete fee flow passes. Payout depends on a verified sandbox beneficiary, funding source, and status lookup. If the briefing requires payouts, replace the collection story with one confirmed voice-to-payout flow and update the affected tickets and contract before implementation. The Sarvam owner confirms whether the track accepts sandbox proof as part of [CS-07](../tickets/CS-07-pitch-and-submission.md).
+Keep full academy onboarding, roster editing, parent invites and review, full localisation, expense tracking, and recurring turf rent on the roadmap. The recurring **fee** workflow and signed billing webhooks are covered in the [Relay plan](BACKEND_RELAY.md). The Sarvam / Relay owner confirms sandbox and access constraints as part of [CS-07](../tickets/CS-07-pitch-and-submission.md).
 
 ## Demo data and visuals
 

@@ -7,6 +7,7 @@
 - Smoke-test Cashfree independently with a test order. Own the server adapter under `src/lib/providers/` and the checkout and verify routes in the [contract](../docs/CONTRACT.md). Use a fake store implementing the contract while CS-02 is in progress.
 - Resolve the parent’s stored fee and reserve a stable order reference. Create or reuse the sandbox order and return the session for the hosted checkout SDK. Set a return URL for the parent view on the intended host.
 - On return or recheck, resolve the order against the parent’s access and call Cashfree. Check order identity, amount, currency, and the successful payment before calling `applyVerifiedPayment`. Keep an unresolved provider state in `processing` and let the parent recheck.
+- Extend the provider adapter for signed PG events, expiring recovery links, and PG refunds. Use the [Relay contract](../docs/RELAY_CONTRACT.md) and pass verified events to [CS-12](CS-12-billing-state-and-refunds.md). Create a recovery link only for the reserved eligible cycle. Give [CS-10](CS-10-relay-and-voice.md) the supported link-delivery handoff.
 
 ## Acceptance and handoff
 

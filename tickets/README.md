@@ -1,6 +1,6 @@
 # CleanSheet ticket board
 
-Read the [sprint spec](../docs/SPEC.md) and [shared contract](../docs/CONTRACT.md). The [four role files](../README.md#four-person-split) describe the default assignments. Record one named owner per ticket here or in the team’s shared tracker. Claim one primary engineering ticket at a time.
+Start with the [Relay backend plan](../docs/BACKEND_RELAY.md), [Relay integration contract](../docs/RELAY_CONTRACT.md), and the [four role files](../README.md#four-person-split). The [base contract](../docs/CONTRACT.md) covers the first one-time checkout. Record one named owner per ticket here or in the team's shared tracker.
 
 | Ticket | Suggested owner | Start independently with | Needed for live completion | Initial status |
 |---|---|---|---|---|
@@ -12,8 +12,12 @@ Read the [sprint spec](../docs/SPEC.md) and [shared contract](../docs/CONTRACT.m
 | [CS-06 · Demo video](CS-06-demo-video.md) | Frontend | Script, captions, edit timeline, test export | CS-08 verified build | READY |
 | [CS-07 · Pitch and submission](CS-07-pitch-and-submission.md) | Sarvam | Briefing, checklist, deck skeleton | CS-06 video and CS-08 release | READY |
 | [CS-08 · Release QA](CS-08-release-qa.md) | Backend, with Cashfree payment evidence | QA checklist and evidence template | CS-01 through CS-05 on one deploy | READY |
+| [CS-09 · Subscriptions lifecycle](CS-09-subscription-lifecycle.md) | Cashfree | Test mandate, provider status and event samples | CS-02 identity and CS-12 projection | READY |
+| [CS-10 · Relay and voice](CS-10-relay-and-voice.md) | Sarvam / Relay | Access checks, call scripts and fixture outcomes | CS-03 recovery path, CS-09 status, CS-11 consent and CS-12 actions | READY |
+| [CS-11 · Secure ID](CS-11-secure-id-contact.md) | Backend | Consent, OTP test path and contact fixtures | CS-02 auth and CS-05 contact view | READY |
+| [CS-12 · Billing state and refunds](CS-12-billing-state-and-refunds.md) | Backend, with Cashfree refund adapter | Normalised event and action fixtures | CS-03/09 provider adapters and CS-10 outreach result evidence | READY |
 
-**Kickoff.** Frontend takes CS-05, Backend takes CS-01, Cashfree takes CS-03, and Sarvam takes CS-04. Backend moves to CS-02 as soon as the scaffold is published. Work against fixtures and provider smoke checks until the live dependencies land. Prepare lightweight capture and pitch assets when time permits and finish them after the feature freeze.
+**Kickoff.** Frontend starts CS-05 with billing fixtures, Backend publishes CS-01 and CS-02, Cashfree runs the PG and subscription smoke checks in CS-03 and CS-09, and Sarvam checks Relay access in CS-10. Backend starts CS-12 against fixture events and uses CS-11 for contact testing. Polish Raz in CS-04 once core flows are connected. Integrate in the order set by the [backend plan](../docs/BACKEND_RELAY.md#build-and-demonstrate-in-order).
 
 **Status.** `READY → CLAIMED → MERGEABLE → VERIFIED`. Mark `MERGEABLE` when isolated checks pass or a non-code asset is ready for review. Mark `VERIFIED` when the ticket’s deployed or deliverable checks pass. Record access blockers against the affected ticket and use the fixture or start an unowned task when possible.
 

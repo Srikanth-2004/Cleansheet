@@ -4,6 +4,10 @@
 
 **Release duty** [CS-06 · Demo video](../tickets/CS-06-demo-video.md)
 
+## Current assignment
+
+Use the [billing fixtures](../docs/RELAY_CONTRACT.md#fixture-scenarios) immediately. Add the parent contact verification and outreach consent, hosted mandate launch, keep/cancel actions, and pending states to the existing flow. Add the coach's success notification and cancellation/refund status. Wire the parent decision through the authenticated app, including when a call sends the parent to the app. Coach confirmation owns refund approval. Handoff the UI and capture path to Backend QA and Sarvam / Relay.
+
 ## Start independently
 
 1. Use the [contract fixtures](../docs/CONTRACT.md#fixture-handoff) to build the sign-in entry, coach fee preview and confirmation, dashboard totals, and parent fee and checkout states. Roll these into the shared scaffold when Backend hands it over.

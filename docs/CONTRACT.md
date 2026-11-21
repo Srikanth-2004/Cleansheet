@@ -1,5 +1,7 @@
 # Shared integration contract
 
+For recurring charges, verification, and Relay actions, also use the [Relay integration contract](RELAY_CONTRACT.md).
+
 This is the implementation seam between the UI, Firebase store, Raz, and Cashfree. Builders can work from these shapes before adjacent code lands. [CS-02](../tickets/CS-02-firebase-and-fee-state.md) materialises the shared types and validators in `src/contracts/`.
 
 ## Common values
