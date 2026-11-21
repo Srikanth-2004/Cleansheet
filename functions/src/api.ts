@@ -1,5 +1,5 @@
 import { isPeriod, type Actor, type FeeStore, type Role } from './contracts/billing.js';
-import { cancellationQuestions, isBillingVoiceLocale, paymentCountText, type BillingVoiceLocale } from './contracts/voice.js';
+import { cancellationQuestions, feePreviewText, isBillingVoiceLocale, paymentCountText, type BillingVoiceLocale } from './contracts/voice.js';
 import type { RefundStore } from './contracts/payment-events.js';
 import type { BillingStore } from './contracts/relay.js';
 import type { PaymentGateway } from './lib/server/cashfree-pg.js';
@@ -28,6 +28,7 @@ interface Services {
   approveOutreach(actor: Actor, actionId: string): Promise<unknown>;
   previewRazFee(request: ApiRequest, actor: Actor): Promise<RazReply>;
   recognizeCancellationAnswer(request: ApiRequest): Promise<{ answer: 'yes' | 'no' | 'unknown' }>;
+  recognizeFeeSend(request: ApiRequest): Promise<{ period: unknown; amountPaise: unknown }>;
   speakBillingText(text: string, locale: BillingVoiceLocale): Promise<{ audioUrl: string }>;
   verifyToken(token: string): Promise<string>;
 }
@@ -51,6 +52,13 @@ async function getActor(
 function readPeriod(period: unknown) {
   if (!isPeriod(period)) throw new HttpError(400, 'INVALID_PERIOD', 'Use a billing period in YYYY-MM format.');
   return period;
+}
+
+function readFeeAmount(amountPaise: unknown) {
+  if (typeof amountPaise !== 'number' || !Number.isSafeInteger(amountPaise) || amountPaise <= 0) {
+    throw new HttpError(400, 'INVALID_AMOUNT', 'The fee must be a positive integer in paise.');
+  }
+  return amountPaise;
 }
 
 function isConsentVersion(value: unknown): value is string {
@@ -101,6 +109,12 @@ export async function handleApi(request: ApiRequest, services: Services) {
   switch (path) {
     case 'POST /api/raz/fee-preview':
       return success(await services.previewRazFee(request, await actorFor('coach')));
+    case 'POST /api/raz/fee-preview-audio': {
+      await actorFor('coach');
+      const { period, amountPaise, locale } = parseObject(request.body);
+      if (!isBillingVoiceLocale(locale)) throw new HttpError(400, 'INVALID_LOCALE', 'Choose English, Hindi, or Kannada.');
+      return success(await services.speakBillingText(feePreviewText(locale, readPeriod(period), readFeeAmount(amountPaise)), locale));
+    }
     case 'POST /api/raz/payment-count-audio': {
       const actor = await actorFor('coach');
       const { locale, period } = parseObject(request.body);
@@ -167,13 +181,13 @@ export async function handleApi(request: ApiRequest, services: Services) {
       }
       return success({ outreachConsent: await makeBillingStore().recordOutreachConsent(actor, granted, consentVersion) });
     }
+    case 'POST /api/raz/send-fee':
     case 'POST /api/coach/fees': {
       const actor = await actorFor('coach');
-      const { period, amountPaise } = parseObject(request.body);
-      if (typeof amountPaise !== 'number' || !Number.isSafeInteger(amountPaise) || amountPaise <= 0) {
-        throw new HttpError(400, 'INVALID_AMOUNT', 'The fee must be a positive integer in paise.');
-      }
-      const fee = await store.createFee(actor, readPeriod(period), amountPaise);
+      const { period, amountPaise } = request.path === '/api/raz/send-fee'
+        ? await services.recognizeFeeSend(request)
+        : parseObject(request.body);
+      const fee = await store.createFee(actor, readPeriod(period), readFeeAmount(amountPaise));
       return success({ feeId: fee.id, status: fee.status });
     }
     case 'GET /api/coach/billing/notifications': {

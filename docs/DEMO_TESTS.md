@@ -13,6 +13,7 @@ Use the **Local Fixtures** controls for the browser walkthrough. Firebase Emulat
 | View recovery | Select **Recovery** in the parent view. | The demo shows the recovery link for a failed debit. |
 | Reconcile a refund | In the coach view, select **Refund ₹500**, then approve the fixture refund. | Net collected changes from ₹1,500 to ₹1,000 in the fixture. The backend updates net collected after verified refund settlement. |
 | Preview a fee with Raz | Say or type “Create this month’s fee” and preview it. | Sarvam Token Factory recognizes the fee request, and Firebase proposes the standard ₹1,500 for the selected month. An explicit amount overrides the standard fee. Confirm the preview before the fee is saved. |
+| Send a fee by voice | Record a fee request, listen to the preview, then select **Send by voice**, say “Send fee”, and choose **Stop & Send**. | Firebase publishes the previewed amount and month to the linked parent. A negated or unclear command leaves the preview open. |
 | Ask who paid in Hindi | In Raz, type `कितने लोगों ने फीस भरी है?` and send it. Select **Listen to payment count** to hear the answer. | The answer uses the coach's verified Firebase ledger. Sarvam speaks the count in Hindi with the provider key configured. Browser fixture payments are separate. |
 | Verify role access and idempotency | Run the Firebase emulator smoke script. | A parent is denied the coach API. Duplicate payment and cancellation events produce one notice each. |
 

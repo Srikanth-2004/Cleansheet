@@ -14,6 +14,7 @@ const staticPaths = new Set([
   '/api/coach/billing/notifications', '/api/coach/refunds', '/api/parent/fees', '/api/parent/billing',
   '/api/parent/subscription/enrol', '/api/parent/contact/start', '/api/parent/contact/verify',
   '/api/parent/billing/cancellation-answer', '/api/parent/billing/cancellation-prompt', '/api/raz/payment-count-audio',
+  '/api/raz/fee-preview-audio', '/api/raz/send-fee',
   '/api/local/cashfree-hits',
   '/api/parent/outreach-consent', '/api/webhooks/cashfree/pg', '/api/webhooks/cashfree/subscriptions',
   '/subscriptions/cycles',

@@ -34,6 +34,8 @@ import {
   type RefundCaseView,
 } from '@/lib/client/types';
 import { MicIcon, RefreshIcon, SparkIcon, StopIcon } from './icons';
+import { FeeVoiceConfirmation } from './FeeVoiceConfirmation';
+import { RazSpeechPlayback } from './RazSpeechPlayback';
 import {
   AnimatedAlert,
   AnimatedNumber,
@@ -63,31 +65,9 @@ const formatAnimatedRupees = (paise: number) =>
 type PaymentReply = Extract<RazPreviewData, { kind: 'payments' }>;
 
 function PaymentCountAudio({ reply }: { reply: PaymentReply }) {
-  const [status, setStatus] = useState<'idle' | 'loading' | 'unavailable'>('idle');
-  const [audioUrl, setAudioUrl] = useState<string>();
-  const request = useRef<AbortController | null>(null);
-  useEffect(() => () => request.current?.abort(), []);
-
-  async function listen() {
-    const controller = new AbortController();
-    request.current = controller;
-    setStatus('loading');
-    const result = await fetchPaymentCountAudio(reply.period, reply.voiceLocale, controller.signal);
-    if (controller.signal.aborted) return;
-    if (result.ok) setAudioUrl(result.data.audioUrl);
-    setStatus(result.ok ? 'idle' : 'unavailable');
-  }
-
-  return (
-    <div className="button-row">
-      {audioUrl
-        ? <audio src={audioUrl} controls autoPlay aria-label="Raz payment count" />
-        : <button type="button" className="btn btn-secondary" onClick={() => void listen()} disabled={status === 'loading'}>
-          {status === 'loading' ? 'Preparing voice…' : 'Listen to payment count'}
-        </button>}
-      {status === 'unavailable' && <p role="status">Sarvam voice is unavailable. The payment count is shown above.</p>}
-    </div>
-  );
+  const { period, voiceLocale } = reply;
+  const load = useCallback((signal: AbortSignal) => fetchPaymentCountAudio(period, voiceLocale, signal), [period, voiceLocale]);
+  return <RazSpeechPlayback load={load} label="Raz payment count" buttonLabel="Listen to payment count" />;
 }
 
 export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDashboardProps) {
@@ -122,6 +102,8 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
   const [previewResult, setPreviewResult] = useState<RazFeeProposal | null>(null);
   const [paymentReply, setPaymentReply] = useState<PaymentReply | null>(null);
   const [confirmBusy, setConfirmBusy] = useState<boolean>(false);
+  const [voiceConfirmBusy, setVoiceConfirmBusy] = useState(false);
+  const [previewFromVoice, setPreviewFromVoice] = useState(false);
   const [confirmedFee, setConfirmedFee] = useState<CreateFeeData | null>(null);
   const [confirmBurstCount, setConfirmBurstCount] = useState<number>(0);
   const [refundBusyId, setRefundBusyId] = useState<string | null>(null);
@@ -132,7 +114,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
   const recorderRef = useRef<BrowserAudioRecorder | null>(null);
   const timerRef = useRef<number | null>(null);
 
-  function showRazReply(reply: RazPreviewData, previewMessage: string) {
+  function showRazReply(reply: RazPreviewData, previewMessage: string, spoken = false) {
     if ('kind' in reply) {
       setPaymentReply(reply);
       setPreviewResult(null);
@@ -143,6 +125,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
     }
     setPaymentReply(null);
     setPreviewResult(reply);
+    setPreviewFromVoice(spoken);
     setStatusMessage(previewMessage);
   }
 
@@ -200,6 +183,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
   }, []);
 
   async function handleStartRecording() {
+    if (voiceConfirmBusy || confirmBusy) return;
     setErrorMessage('');
     setStatusMessage('');
     setPaymentReply(null);
@@ -254,7 +238,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
         period,
       });
       if (res.ok) {
-        showRazReply(res.data, 'Raz prepared a fee preview from your voice command. Review and confirm it below.');
+        showRazReply(res.data, 'Raz prepared a fee preview from your voice command. Review and confirm it below.', true);
       } else {
         setPreviewResult(null);
         setErrorMessage(`${res.error.code}: ${res.error.message}`);
@@ -296,6 +280,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
   }
 
   async function submitTypedCommand(fixtureOnly = false) {
+    if (voiceConfirmBusy || confirmBusy) return;
     setErrorMessage('');
     setStatusMessage('');
     setPaymentReply(null);
@@ -330,10 +315,16 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
     }
   }
 
+  async function handleFeePublished(fee: CreateFeeData) {
+    setErrorMessage('');
+    if (!confirmedFee) setConfirmBurstCount(count => count + 1);
+    setConfirmedFee(fee);
+    setStatusMessage('Fee sent to the linked parent in CleanSheet.');
+    await loadCoachWorkspace();
+  }
+
   async function handleConfirmFee() {
-    if (!previewResult) {
-      return;
-    }
+    if (!previewResult || voiceConfirmBusy || confirmBusy) return;
 
     setErrorMessage('');
     setStatusMessage('');
@@ -346,14 +337,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
     setConfirmBusy(false);
 
     if (res.ok) {
-      if (!confirmedFee) {
-        setConfirmBurstCount((c) => c + 1);
-      }
-      setConfirmedFee(res.data);
-      setStatusMessage(
-        `Fee confirmed (${res.data.feeId}, status: ${res.data.status}). Collections refreshed.`,
-      );
-      await loadCoachWorkspace();
+      await handleFeePublished(res.data);
     } else {
       setErrorMessage(`${res.error.code}: ${res.error.message}`);
     }
@@ -588,7 +572,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
                   <MagneticButton
                     className="btn btn-primary"
                     onClick={() => void handleStartRecording()}
-                    disabled={previewBusy}
+                    disabled={previewBusy || voiceConfirmBusy || confirmBusy}
                   >
                     <MicIcon />
                     Record {selectedLocaleMeta.label} Command
@@ -608,7 +592,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
                 <MagneticButton
                   className="btn btn-secondary"
                   onClick={() => void handleRunSampleClipFixture()}
-                  disabled={previewBusy || isRecording}
+                  disabled={previewBusy || isRecording || voiceConfirmBusy || confirmBusy}
                 >
                   <SparkIcon />
                   Run Sample Voice Clip
@@ -659,7 +643,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
               <MagneticButton
                 type="submit"
                 className="btn btn-teal"
-                disabled={previewBusy || isRecording}
+                disabled={previewBusy || isRecording || voiceConfirmBusy || confirmBusy}
               >
                 <SparkIcon />
                 {previewBusy ? 'Asking Raz…' : 'Preview Fee with Raz'}
@@ -674,7 +658,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
                 <MagneticButton
                   type="button"
                   className="btn btn-secondary"
-                  disabled={previewBusy || isRecording}
+                  disabled={previewBusy || isRecording || voiceConfirmBusy || confirmBusy}
                   onClick={() => void submitTypedCommand(true)}
                 >
                   Preview Demo Fee
@@ -786,12 +770,24 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
                   </div>
                 )}
 
+                {!confirmedFee && (
+                  <FeeVoiceConfirmation
+                    key={`${previewResult.preview.period}:${previewResult.preview.amountPaise}:${locale}`}
+                    preview={previewResult.preview}
+                    locale={locale}
+                    autoStart={previewFromVoice}
+                    disabled={previewBusy || isRecording || confirmBusy}
+                    onBusyChange={setVoiceConfirmBusy}
+                    onSent={fee => void handleFeePublished(fee)}
+                  />
+                )}
+
                 <div className="button-row" style={{ position: 'relative' }}>
                   <ParticleBurst trigger={confirmBurstCount} />
                   <MagneticButton
                     className="btn btn-primary"
                     onClick={() => void handleConfirmFee()}
-                    disabled={confirmBusy}
+                    disabled={confirmBusy || voiceConfirmBusy}
                   >
                     {confirmBusy
                       ? 'Confirming…'
@@ -801,6 +797,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
                   </MagneticButton>
                   <MagneticButton
                     className="btn btn-secondary"
+                    disabled={confirmBusy || voiceConfirmBusy}
                     onClick={() => {
                       setPreviewResult(null);
                       setConfirmedFee(null);

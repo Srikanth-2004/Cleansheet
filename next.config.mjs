@@ -7,6 +7,7 @@ const cspDirectives = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: blob: https://*.googleusercontent.com",
+  "media-src 'self' blob:",
   `connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://sandbox.cashfree.com https://api.cashfree.com${isProd ? '' : ' http://127.0.0.1:* http://localhost:*'}`,
   "frame-src 'self' https://*.firebaseapp.com https://sandbox.cashfree.com",
   "object-src 'none'",

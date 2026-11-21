@@ -2,12 +2,21 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { cancellationQuestions, type BillingVoiceLocale } from '../src/contracts/voice.js';
 import { synthesizeBillingSpeech } from '../src/lib/providers/sarvam.js';
-import { classifyCancellationAnswer, isPaidFeeQuestion, previewRazFee } from '../src/lib/server/raz-preview.js';
+import { classifyCancellationAnswer, isFeeSendConfirmation, isPaidFeeQuestion, previewRazFee } from '../src/lib/server/raz-preview.js';
 
 test('cancellation voice recognizes only clear English, Hindi and Kannada answers', () => {
   for (const answer of ['Yes.', 'जी हाँ।', 'ಹೌದು.']) assert.equal(classifyCancellationAnswer(answer), 'yes');
   for (const answer of ['No thanks.', 'नहीं।', 'ಇಲ್ಲ.']) assert.equal(classifyCancellationAnswer(answer), 'no');
   for (const answer of ['maybe', 'yes, no', 'हाँ नहीं', '']) assert.equal(classifyCancellationAnswer(answer), 'unknown');
+});
+
+test('voice publishing accepts a clear send command and rejects negations and generic agreement', () => {
+  for (const command of ['Send fee.', 'Send it.', 'फीस भेज दो।', 'फ़ीस भेजिए।', 'ಶುಲ್ಕ ಕಳುಹಿಸಿ.']) {
+    assert.equal(isFeeSendConfirmation(command), true, command);
+  }
+  for (const command of ["Don't send the fee", 'फीस मत भेजो', 'ಶುಲ್ಕ ಕಳುಹಿಸಬೇಡಿ', 'हाँ', 'Yes', '']) {
+    assert.equal(isFeeSendConfirmation(command), false, command);
+  }
 });
 
 test('Hindi payment counts use the scoped ledger without requesting a model key', async () => {

@@ -16,7 +16,7 @@ import { getCoachFeeSummaryViaMcp, getCoachPaidFeesViaMcp } from './lib/server/f
 import { cleanSheetRecords } from './lib/server/firestore.js';
 import { HttpError, json, parseObject, success } from './lib/server/http.js';
 import { createRefundStore } from './lib/server/refund-store.js';
-import { previewRazFee, recognizeCancellationAnswer } from './lib/server/raz-preview.js';
+import { previewRazFee, recognizeCancellationAnswer, recognizeFeeSend } from './lib/server/raz-preview.js';
 import { approveRelayAction, getRelayDashboardHandoff, recordRelayDashboardOutcome } from './lib/server/relay-handoff.js';
 import { runSubscriptionAction } from './lib/server/subscription-actions.js';
 import { logProviderBlocked, logRequest, observeRequest } from './lib/server/observability.js';
@@ -126,7 +126,7 @@ export const api = onRequest({ region, invoker: 'public', cors: cors.length ? co
       return success({ hits: snapshot.docs.map(document => document.data()) });
     }
     const localPreview = localDemo && req.method === 'POST'
-      && ['/api/raz/fee-preview', '/api/raz/payment-count-audio'].includes(req.path)
+      && ['/api/raz/fee-preview', '/api/raz/fee-preview-audio', '/api/raz/payment-count-audio', '/api/raz/send-fee'].includes(req.path)
       && req.get('authorization') === 'Bearer fixture-coach-token';
     const localAnswer = localDemo && req.method === 'POST'
       && ['/api/parent/billing/cancellation-answer', '/api/parent/billing/cancellation-prompt'].includes(req.path)
@@ -155,6 +155,9 @@ export const api = onRequest({ region, invoker: 'public', cors: cors.length ? co
         'CLEANSHEET_SARVAM_SECRET', 'SARVAM_NOT_CONFIGURED', 'Sarvam',
       ), period => getCoachFeeSummaryViaMcp(actor, fees, period), period => getCoachPaidFeesViaMcp(actor, fees, period)),
       recognizeCancellationAnswer: request => recognizeCancellationAnswer(request, () => providerSecret(
+        'CLEANSHEET_SARVAM_SECRET', 'SARVAM_NOT_CONFIGURED', 'Sarvam',
+      )),
+      recognizeFeeSend: request => recognizeFeeSend(request, () => providerSecret(
         'CLEANSHEET_SARVAM_SECRET', 'SARVAM_NOT_CONFIGURED', 'Sarvam',
       )),
       speakBillingText: async (text, locale) => {

@@ -35,6 +35,7 @@ import type {
   ParentBillingData,
   ParentDecision,
   ParentFeesData,
+  RazFeeProposal,
   RazPreviewData,
   RefundCaseView,
   SubscriptionEnrolData,
@@ -280,6 +281,26 @@ export function fetchPaymentCountAudio(period: string, locale: 'en-IN' | Locale,
   return requestJson<{ audioUrl: string }>('/api/raz/payment-count-audio', {
     method: 'POST', body: JSON.stringify({ period, locale }), signal,
   }, isFixtureModeEnabled() ? 'fixture-coach-token' : undefined);
+}
+
+export function fetchFeePreviewAudio(preview: RazFeeProposal['preview'], locale: Locale, signal: AbortSignal) {
+  return requestJson<{ audioUrl: string }>('/api/raz/fee-preview-audio', {
+    method: 'POST', body: JSON.stringify({ ...preview, locale }), signal,
+  }, isFixtureModeEnabled() ? 'fixture-coach-token' : undefined);
+}
+
+export async function sendCoachFeeByVoice(preview: RazFeeProposal['preview'], locale: Locale, audio: Blob, signal: AbortSignal) {
+  const body = new FormData();
+  body.append('audio', audio, 'send-fee.wav');
+  body.append('locale', locale);
+  body.append('period', preview.period);
+  body.append('amountPaise', String(preview.amountPaise));
+  const fixture = isFixtureModeEnabled();
+  const result = await requestJson<CreateFeeData>('/api/raz/send-fee', {
+    method: 'POST', body, signal,
+  }, fixture ? 'fixture-coach-token' : undefined);
+  if (fixture && result.ok) fixtureConfirmFee(preview);
+  return result;
 }
 
 export async function submitParentCycleDecision(

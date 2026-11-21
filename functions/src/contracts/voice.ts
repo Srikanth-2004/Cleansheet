@@ -20,3 +20,12 @@ export function paymentCountText(locale: BillingVoiceLocale, count: number) {
   }
   return count ? `${count} ${count === 1 ? 'player has' : 'players have'} paid this month.` : 'No players have a verified fee payment for this month.';
 }
+
+export function feePreviewText(locale: BillingVoiceLocale, period: string, amountPaise: number) {
+  const month = new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric', timeZone: 'UTC' })
+    .format(new Date(`${period}-01T00:00:00Z`));
+  const amount = amountPaise / 100;
+  if (locale === 'hi-IN') return `${month} की फीस ${amount} रुपये है। अभिभावक को भेजने के लिए, फीस भेज दो कहें।`;
+  if (locale === 'kn-IN') return `${month} ಶುಲ್ಕ ${amount} ರೂಪಾಯಿ. ಪೋಷಕರಿಗೆ ಕಳುಹಿಸಲು, ಶುಲ್ಕ ಕಳುಹಿಸಿ ಎಂದು ಹೇಳಿ.`;
+  return `The fee for ${month} is ${amount} rupees. To send it to the parent, say send fee.`;
+}

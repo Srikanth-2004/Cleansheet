@@ -1,5 +1,5 @@
 import type { PaidFee } from '../../contracts/billing.js';
-import { paymentCountText, type BillingVoiceLocale } from '../../contracts/voice.js';
+import { isBillingVoiceLocale, paymentCountText, type BillingVoiceLocale } from '../../contracts/voice.js';
 import { generateRazFeePreview, isSupportedLocale, isValidPeriod, SarvamProviderError, transcribeWithSaarasV4, type FeeSummaryContext, type RazPreviewResult } from '../providers/sarvam.js';
 import { HttpError, parseObject } from './http.js';
 
@@ -73,20 +73,28 @@ async function parseAudioUpload(contentType: string, rawBody: Buffer | undefined
   const audio = fields.get('audio');
   if (!(audio instanceof File) || audio.size === 0) throw new HttpError(400, 'MISSING_AUDIO', 'An audio file is required.');
   if (audio.size > limit) throw new HttpError(413, 'AUDIO_TOO_LARGE', 'The audio file exceeds the upload limit.');
-  return { audio, locale: fields.get('locale'), period: fields.get('period') };
+  return { audio, locale: fields.get('locale'), period: fields.get('period'), amountPaise: fields.get('amountPaise') };
+}
+
+function normalizeVoiceAnswer(transcript: string) {
+  return transcript.normalize('NFKC').toLowerCase().replace(/[\p{P}\p{S}]/gu, ' ').trim().replace(/\s+/g, ' ');
 }
 
 export function classifyCancellationAnswer(transcript: string): 'yes' | 'no' | 'unknown' {
-  const normalized = transcript.normalize('NFKC').toLowerCase().replace(/[\p{P}\p{S}]/gu, ' ').trim().replace(/\s+/g, ' ');
+  const normalized = normalizeVoiceAnswer(transcript);
   if (['yes', 'yes please', 'हाँ', 'हां', 'जी हाँ', 'जी हां', 'ಹೌದು'].includes(normalized)) return 'yes';
   if (['no', 'no thanks', 'नहीं', 'नही', 'जी नहीं', 'ಇಲ್ಲ', 'ಬೇಡ'].includes(normalized)) return 'no';
   return 'unknown';
 }
 
-export async function recognizeCancellationAnswer(request: VoiceRequest, getApiKey: () => Promise<string>) {
+export function isFeeSendConfirmation(transcript: string) {
+  return /^(send( (the )?fee| it)?|सेंड (फी|फीस|इट)|(फ़?ीस |फी )?भेज( दो| दीजिए|ो|िए)?|(ಶುಲ್ಕ )?ಕಳುಹಿಸಿ|ಸೆಂಡ್ ಫೀ)$/.test(normalizeVoiceAnswer(transcript));
+}
+
+async function transcribeConfirmation(request: VoiceRequest, getApiKey: () => Promise<string>, failureMessage: string) {
   if (!request.contentType?.includes('multipart/form-data')) throw new HttpError(400, 'INVALID_AUDIO_FORM', 'Send an audio recording.');
-  const { audio, locale } = await parseAudioUpload(request.contentType, request.rawBody, 1024 * 1024);
-  if (locale !== 'en-IN' && !isSupportedLocale(locale)) {
+  const { audio, locale, period, amountPaise } = await parseAudioUpload(request.contentType, request.rawBody, 1024 * 1024);
+  if (!isBillingVoiceLocale(locale)) {
     throw new HttpError(400, 'INVALID_LOCALE', 'Choose English, Hindi, or Kannada.');
   }
   const apiKey = await getApiKey();
@@ -94,13 +102,26 @@ export async function recognizeCancellationAnswer(request: VoiceRequest, getApiK
     const transcript = await transcribeWithSaarasV4({
       audioBuffer: Buffer.from(await audio.arrayBuffer()), fileName: audio.name, mimeType: audio.type, locale,
     }, apiKey);
-    return { answer: classifyCancellationAnswer(transcript) };
+    return { transcript, period, amountPaise };
   } catch (error) {
     if (error instanceof SarvamProviderError) {
-      throw new HttpError(error.status, error.code, 'Could not hear a clear answer. You can select Yes or No instead.');
+      throw new HttpError(error.status, error.code, failureMessage);
     }
     throw error;
   }
+}
+
+export async function recognizeCancellationAnswer(request: VoiceRequest, getApiKey: () => Promise<string>) {
+  const { transcript } = await transcribeConfirmation(request, getApiKey, 'Could not hear a clear answer. You can select Yes or No instead.');
+  return { answer: classifyCancellationAnswer(transcript) };
+}
+
+export async function recognizeFeeSend(request: VoiceRequest, getApiKey: () => Promise<string>) {
+  const input = await transcribeConfirmation(request, getApiKey, 'Could not hear a clear send command. Record again or use the confirmation button.');
+  if (!isFeeSendConfirmation(input.transcript)) {
+    throw new HttpError(400, 'VOICE_CONFIRMATION_REQUIRED', 'Say “Send fee”, “फीस भेज दो”, or “ಶುಲ್ಕ ಕಳುಹಿಸಿ” to send the preview.');
+  }
+  return { period: input.period, amountPaise: typeof input.amountPaise === 'string' ? Number(input.amountPaise) : undefined };
 }
 
 async function parsePreview({ contentType, rawBody, body }: VoiceRequest) {
