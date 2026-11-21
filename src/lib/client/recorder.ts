@@ -15,7 +15,7 @@ export interface RecordedAudio {
 
 export interface BrowserAudioRecorder {
   mimeType: string;
-  start: () => Promise<void>;
+  start: (onLevels?: (levels: number[]) => void) => Promise<void>;
   stop: () => Promise<RecordedAudio>;
   cancel: () => void;
 }
@@ -36,13 +36,23 @@ export function detectSupportedAudioMimeType(): string | null {
 export function createAudioRecorder(): BrowserAudioRecorder {
   let mediaRecorder: MediaRecorder | null = null;
   let mediaStream: MediaStream | null = null;
+  let audioContext: AudioContext | null = null;
+  let rafId: number | null = null;
   let chunks: BlobPart[] = [];
   let startedAt = 0;
 
   const detected = detectSupportedAudioMimeType();
   const activeMimeType = detected ?? '';
 
-  function cleanupStream(): void {
+  function cleanupAudioGraph(): void {
+    if (rafId !== null) {
+      window.cancelAnimationFrame(rafId);
+      rafId = null;
+    }
+    if (audioContext) {
+      void audioContext.close().catch(() => {});
+      audioContext = null;
+    }
     if (mediaStream) {
       for (const track of mediaStream.getTracks()) {
         track.stop();
@@ -54,7 +64,7 @@ export function createAudioRecorder(): BrowserAudioRecorder {
   return {
     mimeType: activeMimeType || 'browser-default',
 
-    async start(): Promise<void> {
+    async start(onLevels?: (levels: number[]) => void): Promise<void> {
       if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) {
         throw new Error('Microphone recording is unavailable in this browser. Use the typed command fallback.');
       }
@@ -64,6 +74,33 @@ export function createAudioRecorder(): BrowserAudioRecorder {
 
       chunks = [];
       mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      if (onLevels && typeof AudioContext !== 'undefined') {
+        try {
+          audioContext = new AudioContext();
+          const source = audioContext.createMediaStreamSource(mediaStream);
+          const analyser = audioContext.createAnalyser();
+          analyser.fftSize = 64;
+          source.connect(analyser);
+          const bins = new Uint8Array(analyser.frequencyBinCount);
+
+          const tick = () => {
+            analyser.getByteFrequencyData(bins);
+            const bars: number[] = [];
+            const count = 24;
+            for (let i = 0; i < count; i += 1) {
+              const raw = bins[i % bins.length] ?? 0;
+              bars.push(Math.max(0.14, Math.min(1, raw / 210)));
+            }
+            onLevels(bars);
+            rafId = window.requestAnimationFrame(tick);
+          };
+          rafId = window.requestAnimationFrame(tick);
+        } catch {
+          // AudioContext optional; recording still proceeds cleanly.
+        }
+      }
+
       mediaRecorder = activeMimeType
         ? new MediaRecorder(mediaStream, { mimeType: activeMimeType })
         : new MediaRecorder(mediaStream);
@@ -81,7 +118,7 @@ export function createAudioRecorder(): BrowserAudioRecorder {
     stop(): Promise<RecordedAudio> {
       return new Promise((resolve, reject) => {
         if (!mediaRecorder) {
-          cleanupStream();
+          cleanupAudioGraph();
           reject(new Error('No active recording session.'));
           return;
         }
@@ -92,7 +129,7 @@ export function createAudioRecorder(): BrowserAudioRecorder {
         recorder.onstop = () => {
           const durationMs = Math.max(0, Date.now() - startedAt);
           const blob = new Blob(chunks, { type: resolvedMimeType });
-          cleanupStream();
+          cleanupAudioGraph();
           mediaRecorder = null;
           chunks = [];
           resolve({
@@ -103,7 +140,7 @@ export function createAudioRecorder(): BrowserAudioRecorder {
         };
 
         recorder.onerror = () => {
-          cleanupStream();
+          cleanupAudioGraph();
           mediaRecorder = null;
           chunks = [];
           reject(new Error('Audio recording failed. Please try again or use typed input.'));
@@ -112,7 +149,7 @@ export function createAudioRecorder(): BrowserAudioRecorder {
         if (recorder.state !== 'inactive') {
           recorder.stop();
         } else {
-          cleanupStream();
+          cleanupAudioGraph();
           reject(new Error('Recorder is already inactive.'));
         }
       });
@@ -124,7 +161,7 @@ export function createAudioRecorder(): BrowserAudioRecorder {
       }
       mediaRecorder = null;
       chunks = [];
-      cleanupStream();
+      cleanupAudioGraph();
     },
   };
 }

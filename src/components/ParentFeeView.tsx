@@ -1,18 +1,30 @@
 'use client';
 
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useId, useRef, useState } from 'react';
 import {
   createFeeCheckout,
+  enrolSubscription,
+  fetchParentBilling,
   fetchParentFees,
+  startContactVerification,
+  submitParentCycleDecision,
+  updateOutreachConsent,
+  verifyContactOtp,
   verifyOrder,
 } from '@/lib/client/api';
 import { openCashfreeSandboxCheckout } from '@/lib/client/cashfree';
-import { setFixtureFeeStatusForTesting, setFixtureSimulatedOutcome } from '@/lib/client/fixtures';
+import {
+  FIXTURE_SANDBOX_OTP,
+  setFixtureFeeStatusForTesting,
+  setFixtureSimulatedOutcome,
+} from '@/lib/client/fixtures';
 import {
   type CheckoutSessionData,
   DEFAULT_DEMO_PERIOD,
   formatPaise,
   type MeData,
+  type ParentBillingData,
+  type ParentDecision,
   type ParentFee,
 } from '@/lib/client/types';
 import { ArrowIcon, RefreshIcon } from './icons';
@@ -21,11 +33,14 @@ import {
   AnimatedNumber,
   BlurReveal,
   CheckDraw,
+  LifecyclePipeline,
   MagneticButton,
   MorphPill,
   ParticleBurst,
+  type PipelineStage,
   SpotlightCard,
   TextShimmer,
+  ToggleSwitch,
 } from './motion/primitives';
 
 interface ParentFeeViewProps {
@@ -45,16 +60,26 @@ export function ParentFeeView({
   refreshSignal = 0,
 }: ParentFeeViewProps) {
   const modalTitleId = useId();
+  const phoneInputId = useId();
+  const otpInputId = useId();
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const autoVerifiedRef = useRef<string | null>(null);
   const celebratedFeeIdsRef = useRef<Set<string>>(new Set());
 
   const [period] = useState<string>(DEFAULT_DEMO_PERIOD);
   const [fees, setFees] = useState<ParentFee[]>([]);
+  const [billing, setBilling] = useState<ParentBillingData | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [busyFeeId, setBusyFeeId] = useState<string | null>(null);
   const [verifyingOrderId, setVerifyingOrderId] = useState<string | null>(null);
   const [paidBurstCount, setPaidBurstCount] = useState<number>(0);
+
+  const [phoneInput, setPhoneInput] = useState<string>('+91 98765 43210');
+  const [challengeId, setChallengeId] = useState<string>('');
+  const [maskedPhone, setMaskedPhone] = useState<string>('');
+  const [otpInput, setOtpInput] = useState<string>('');
+  const [contactBusy, setContactBusy] = useState<boolean>(false);
+  const [billingBusy, setBillingBusy] = useState<boolean>(false);
 
   const [activeCheckout, setActiveCheckout] = useState<{
     fee: ParentFee;
@@ -65,22 +90,29 @@ export function ParentFeeView({
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
 
-  const loadFees = useCallback(async () => {
+  const loadParentWorkspace = useCallback(async () => {
     setLoading(true);
-    const res = await fetchParentFees(period);
+    const [feeRes, billingRes] = await Promise.all([
+      fetchParentFees(period),
+      fetchParentBilling(),
+    ]);
     setLoading(false);
 
-    if (res.ok) {
-      setFees(res.data.fees);
+    if (feeRes.ok) {
+      setFees(feeRes.data.fees);
       setErrorMessage('');
     } else {
-      setErrorMessage(`${res.error.code}: ${res.error.message}`);
+      setErrorMessage(`${feeRes.error.code}: ${feeRes.error.message}`);
+    }
+
+    if (billingRes.ok) {
+      setBilling(billingRes.data);
     }
   }, [period]);
 
   useEffect(() => {
-    void loadFees();
-  }, [loadFees, refreshSignal]);
+    void loadParentWorkspace();
+  }, [loadParentWorkspace, refreshSignal]);
 
   const handleVerifyOrder = useCallback(
     async (orderId: string) => {
@@ -104,12 +136,12 @@ export function ParentFeeView({
             `Order ${orderId} is still ${res.data.feeStatus}. Use Recheck Status once Cashfree confirms.`,
           );
         }
-        await loadFees();
+        await loadParentWorkspace();
       } else {
         setErrorMessage(`${res.error.code}: ${res.error.message}`);
       }
     },
-    [loadFees],
+    [loadParentWorkspace],
   );
 
   useEffect(() => {
@@ -169,36 +201,179 @@ export function ParentFeeView({
     await handleVerifyOrder(session.orderId);
   }
 
+  async function handleStartContact(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setErrorMessage('');
+    setStatusMessage('');
+    setContactBusy(true);
+
+    const res = await startContactVerification({
+      phone: phoneInput,
+      consentVersion: 'v1.0',
+    });
+    setContactBusy(false);
+
+    if (res.ok) {
+      setChallengeId(res.data.challengeId);
+      setMaskedPhone(res.data.maskedPhone);
+      setStatusMessage(
+        fixtureMode
+          ? `Secure ID OTP challenge created for ${res.data.maskedPhone}. Sandbox test code: ${FIXTURE_SANDBOX_OTP}.`
+          : `Verification code sent to ${res.data.maskedPhone}.`,
+      );
+      await loadParentWorkspace();
+    } else {
+      setErrorMessage(`${res.error.code}: ${res.error.message}`);
+    }
+  }
+
+  async function handleVerifyOtp(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setErrorMessage('');
+    setStatusMessage('');
+    setContactBusy(true);
+
+    const res = await verifyContactOtp({
+      challengeId,
+      otp: otpInput.trim(),
+    });
+    setContactBusy(false);
+
+    if (res.ok) {
+      setChallengeId('');
+      setOtpInput('');
+      setMaskedPhone(res.data.maskedPhone);
+      setStatusMessage(`Secure ID contact verified (${res.data.maskedPhone}).`);
+      await loadParentWorkspace();
+    } else {
+      setErrorMessage(`${res.error.code}: ${res.error.message}`);
+    }
+  }
+
+  async function handleToggleConsent() {
+    if (!billing) return;
+    setErrorMessage('');
+    setBillingBusy(true);
+    const nextGranted = billing.outreachConsent !== 'granted';
+    const res = await updateOutreachConsent({
+      granted: nextGranted,
+      consentVersion: 'v1.0',
+    });
+    setBillingBusy(false);
+
+    if (res.ok) {
+      setStatusMessage(`Relay voice outreach consent updated to ${res.data.outreachConsent}.`);
+      await loadParentWorkspace();
+    } else {
+      setErrorMessage(`${res.error.code}: ${res.error.message}`);
+    }
+  }
+
+  async function handleEnrolSubscription() {
+    setErrorMessage('');
+    setBillingBusy(true);
+    const res = await enrolSubscription();
+    setBillingBusy(false);
+
+    if (res.ok) {
+      setStatusMessage(
+        `Cashfree Mandate ${res.data.subscriptionId} (${res.data.status}) linked for ${period}.`,
+      );
+      await loadParentWorkspace();
+    } else {
+      setErrorMessage(`${res.error.code}: ${res.error.message}`);
+    }
+  }
+
+  async function handleCycleDecision(decision: ParentDecision) {
+    if (!billing?.cycle) return;
+    setErrorMessage('');
+    setBillingBusy(true);
+    const res = await submitParentCycleDecision(billing.cycle.id, decision);
+    setBillingBusy(false);
+
+    if (res.ok) {
+      setStatusMessage(
+        decision === 'cancel_subscription'
+          ? `Subscription cancelled (${res.data.subscriptionStatus}). Coach cancellation notice queued.`
+          : `Cycle confirmed (${res.data.cycleStatus}). Recurring charge path reserved.`,
+      );
+      await loadParentWorkspace();
+    } else {
+      setErrorMessage(`${res.error.code}: ${res.error.message}`);
+    }
+  }
+
+  const feePaid = fees.some((f) => f.status === 'paid');
+  const contactVerified = billing?.contactStatus === 'verified';
+  const mandateActive = Boolean(billing?.subscription);
+
+  const stages: PipelineStage[] = [
+    {
+      id: 'fee-due',
+      code: '01',
+      label: 'Fee Published',
+      state: fees.length > 0 ? 'done' : 'active',
+    },
+    {
+      id: 'secure-id',
+      code: '02',
+      label: 'Secure ID OTP',
+      state: contactVerified ? 'done' : challengeId ? 'active' : 'pending',
+    },
+    {
+      id: 'mandate',
+      code: '03',
+      label: 'Mandate / Choice',
+      state:
+        billing?.cycle?.status === 'decision_recorded' || billing?.cycle?.status === 'closed'
+          ? 'done'
+          : mandateActive
+            ? 'active'
+            : 'pending',
+    },
+    {
+      id: 'settled',
+      code: '04',
+      label: 'Cashfree Verified',
+      state: feePaid ? 'done' : fees.length > 0 ? 'active' : 'pending',
+    },
+  ];
+
+  const otpChars = Array.from({ length: 6 }, (_, i) => otpInput[i] ?? '');
+
   return (
     <div>
       <div className="page-intro">
         <div>
-          <p className="eyebrow">
-            {me.academyName} · {me.teamName} Squad
+          <p className="eyebrow mono">
+            PORTAL // {me.academyName} · {me.teamName} SQUAD
           </p>
           <BlurReveal
             as="h1"
             id="main-heading"
             tabIndex={-1}
             className="page-title"
-            text="Parent Fee & Checkout"
-            highlightWords={['Checkout']}
+            text="Parent Fee & Mandate Portal"
+            highlightWords={['Portal']}
           />
           <p className="page-subtitle">
-            Billing period <span className="mono">{period}</span> · Review linked player fees and
-            complete Cashfree Sandbox checkout.
+            Period <span className="mono">{period}</span> · Verify adult contact, manage recurring
+            mandates, and settle fees via Cashfree Sandbox.
           </p>
         </div>
 
         <MagneticButton
           className="btn btn-secondary"
-          onClick={() => void loadFees()}
+          onClick={() => void loadParentWorkspace()}
           disabled={loading}
         >
           <RefreshIcon />
-          {loading ? 'Loading…' : 'Refresh Fee Status'}
+          {loading ? 'Loading…' : 'Refresh Portal'}
         </MagneticButton>
       </div>
+
+      <LifecyclePipeline stages={stages} />
 
       <div aria-live="polite" aria-atomic="true">
         <AnimatedAlert message={errorMessage} tone="error" role="alert" />
@@ -206,24 +381,25 @@ export function ParentFeeView({
       </div>
 
       {loading ? (
-        <div className="card status-card">
-          <TextShimmer>Loading linked player fees…</TextShimmer>
+        <div className="card status-card" style={{ marginTop: '1rem' }}>
+          <TextShimmer>Loading linked player ledger…</TextShimmer>
         </div>
       ) : fees.length === 0 ? (
         <SpotlightCard
           className="card"
           spotlightColor="rgba(89, 124, 128, 0.22)"
           delay={0.05}
+          style={{ marginTop: '1rem' }}
         >
+          <div className="panel-index mono">01 // ONE-TIME PG CHECKOUT</div>
           <h2 className="section-heading">No Fees Due Yet</h2>
           <p className="section-caption" style={{ marginBottom: 0 }}>
             Once the coach confirms a fee proposal from Raz for period{' '}
-            <span className="mono">{period}</span>, it will appear here for Cashfree Sandbox
-            checkout.
+            <span className="mono">{period}</span>, it appears here for Cashfree Sandbox checkout.
           </p>
         </SpotlightCard>
       ) : (
-        <ul className="fee-list">
+        <ul className="fee-list" style={{ marginTop: '1rem' }}>
           {fees.map((fee, index) => {
             const knownOrderId = lastOrderIdByFee[fee.id] || returnOrderId || '';
             const statusTone =
@@ -249,8 +425,9 @@ export function ParentFeeView({
                     ? 'rgba(89, 124, 128, 0.34)'
                     : 'rgba(158, 92, 85, 0.28)'
                 }
-                delay={0.06 * index}
+                delay={0.05 * index}
               >
+                <div className="panel-index mono">01 // ONE-TIME PG CHECKOUT</div>
                 <div className="fee-card-header">
                   <div>
                     <h2 className="section-heading" style={{ marginBottom: '0.2rem' }}>
@@ -370,6 +547,213 @@ export function ParentFeeView({
         </ul>
       )}
 
+      <div className="coach-grid" style={{ marginTop: '1.25rem' }}>
+        <SpotlightCard
+          as="section"
+          className="card"
+          spotlightColor="rgba(89, 124, 128, 0.24)"
+          delay={0.14}
+          aria-labelledby="secure-id-heading"
+        >
+          <div className="panel-index mono">02 // SECURE ID &amp; OUTREACH CONSENT (CS-11)</div>
+          <div className="preview-header">
+            <h2 id="secure-id-heading" className="section-heading" style={{ margin: 0 }}>
+              Adult Contact Verification
+            </h2>
+            <MorphPill
+              keyValue={`contact-${billing?.contactStatus ?? 'unverified'}`}
+              tone={
+                billing?.contactStatus === 'verified' ? 'pill-teal' : 'pill-terracotta'
+              }
+            >
+              {billing?.contactStatus ?? 'unverified'}
+            </MorphPill>
+          </div>
+          <p className="section-caption">
+            Verify the linked adult mobile number via Cashfree Secure ID OTP before Relay voice
+            calls can run.
+          </p>
+
+          <form onSubmit={handleStartContact} style={{ marginBottom: '1rem' }}>
+            <div className="field-group">
+              <label htmlFor={phoneInputId} className="field-label">
+                Linked adult mobile number
+              </label>
+              <input
+                id={phoneInputId}
+                name="phone"
+                type="tel"
+                autoComplete="tel"
+                className="text-input"
+                value={phoneInput}
+                onChange={(e) => setPhoneInput(e.target.value)}
+                required
+              />
+            </div>
+
+            <MagneticButton type="submit" className="btn btn-secondary" disabled={contactBusy}>
+              {contactBusy ? 'Sending OTP…' : 'Send Secure ID OTP'}
+            </MagneticButton>
+          </form>
+
+          {challengeId && (
+            <form onSubmit={handleVerifyOtp} style={{ marginBottom: '1rem' }}>
+              <div className="field-group">
+                <label htmlFor={otpInputId} className="field-label">
+                  6-digit verification OTP {maskedPhone ? `for ${maskedPhone}` : ''}
+                </label>
+                {fixtureMode && (
+                  <span className="field-hint mono">
+                    Sandbox test OTP: {FIXTURE_SANDBOX_OTP}
+                  </span>
+                )}
+                <div className="otp-stack">
+                  <div className="otp-slots" aria-hidden="true">
+                    {otpChars.map((ch, idx) => (
+                      <span
+                        key={idx}
+                        className={`otp-slot mono ${ch ? 'is-filled' : ''}`}
+                      >
+                        {ch || '·'}
+                      </span>
+                    ))}
+                  </div>
+                  <input
+                    id={otpInputId}
+                    name="otp"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    pattern="\d{6}"
+                    maxLength={6}
+                    className="otp-overlay-input mono"
+                    value={otpInput}
+                    onChange={(e) => setOtpInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    required
+                  />
+                </div>
+              </div>
+
+              <MagneticButton type="submit" className="btn btn-teal" disabled={contactBusy}>
+                Verify Secure ID OTP
+              </MagneticButton>
+            </form>
+          )}
+
+          <div className="consent-row">
+            <div>
+              <strong>Relay Voice Outreach Consent</strong>
+              <p className="field-hint" style={{ margin: '0.15rem 0 0' }}>
+                Required for pre-charge reminders &amp; recovery calls (revocable anytime).
+              </p>
+            </div>
+            <ToggleSwitch
+              pressed={billing?.outreachConsent === 'granted'}
+              onToggle={() => void handleToggleConsent()}
+            >
+              {billingBusy
+                ? 'Updating…'
+                : billing?.outreachConsent === 'granted'
+                  ? 'Granted'
+                  : 'Withheld'}
+            </ToggleSwitch>
+          </div>
+        </SpotlightCard>
+
+        <SpotlightCard
+          as="section"
+          className="card-elevated"
+          spotlightColor="rgba(158, 92, 85, 0.24)"
+          delay={0.18}
+          aria-labelledby="mandate-heading"
+        >
+          <div className="panel-index mono">03 // SUBSCRIPTION MANDATE &amp; RECOVERY (CS-09)</div>
+          <div className="preview-header">
+            <h2 id="mandate-heading" className="section-heading" style={{ margin: 0 }}>
+              Monthly Auto-Pay Mandate
+            </h2>
+            <MorphPill
+              keyValue={`sub-${billing?.subscription?.status ?? 'none'}`}
+              tone={
+                billing?.subscription?.status === 'active' ? 'pill-teal' : 'pill-terracotta'
+              }
+            >
+              {billing?.subscription?.status ?? 'not enrolled'}
+            </MorphPill>
+          </div>
+          <p className="section-caption">
+            Revocable on-demand Cashfree mandate. Confirm or cancel before the billing cutoff.
+          </p>
+
+          <dl className="kv-list" style={{ marginBottom: '1.15rem' }}>
+            <div className="kv-row">
+              <dt>Subscription ID</dt>
+              <dd className="mono">{billing?.subscription?.id ?? 'None'}</dd>
+            </div>
+            <div className="kv-row">
+              <dt>Current Cycle</dt>
+              <dd className="mono">
+                {billing?.cycle ? `${billing.cycle.id} (${billing.cycle.status})` : 'No active cycle'}
+              </dd>
+            </div>
+            <div className="kv-row">
+              <dt>Cycle Fee</dt>
+              <dd>{billing?.cycle ? formatPaise(billing.cycle.amountPaise) : '—'}</dd>
+            </div>
+          </dl>
+
+          <div className="button-row">
+            <MagneticButton
+              className="btn btn-secondary"
+              onClick={() => void handleEnrolSubscription()}
+              disabled={billingBusy}
+            >
+              {billing?.subscription ? 'Refresh Mandate Session' : 'Enrol Cashfree Mandate'}
+            </MagneticButton>
+
+            {billing?.cycle && (
+              <>
+                <MagneticButton
+                  className="btn btn-teal"
+                  onClick={() => void handleCycleDecision('keep')}
+                  disabled={billingBusy || billing.subscription?.status === 'cancelled'}
+                >
+                  Keep Mandate
+                </MagneticButton>
+                <MagneticButton
+                  className="btn btn-terracotta"
+                  onClick={() => void handleCycleDecision('cancel_subscription')}
+                  disabled={
+                    billingBusy ||
+                    billing.subscription?.status === 'cancelled' ||
+                    billing.subscription?.status === 'cancel_pending'
+                  }
+                >
+                  Cancel Mandate
+                </MagneticButton>
+              </>
+            )}
+          </div>
+
+          {billing?.cycle?.status === 'recovery_available' && billing.cycle.recoveryUrl && (
+            <div className="alert alert-error" style={{ marginTop: '1rem' }}>
+              <strong>Auto-debit failed — recovery link ready</strong>
+              <p style={{ margin: '0.35rem 0 0.75rem' }}>
+                Complete one-time PG recovery checkout via Cashfree Sandbox:
+              </p>
+              <a
+                href={billing.cycle.recoveryUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="btn btn-primary btn-compact"
+              >
+                Open Cashfree Recovery Link
+              </a>
+            </div>
+          )}
+        </SpotlightCard>
+      </div>
+
       <dialog
         ref={dialogRef}
         className="modal-dialog"
@@ -388,7 +772,7 @@ export function ParentFeeView({
           <h2 id={modalTitleId} className="section-heading" style={{ margin: 0 }}>
             Cashfree PG Sandbox (Fixture)
           </h2>
-          <span className="pill pill-sandbox">SANDBOX</span>
+          <span className="pill pill-sandbox mono">SANDBOX</span>
         </div>
 
         <p className="section-caption">

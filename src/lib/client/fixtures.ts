@@ -1,26 +1,40 @@
 import {
   type ApiResponse,
   type CheckoutSessionData,
+  type CoachNotification,
+  type CoachNotificationsData,
+  type CoachRefundsData,
   type CoachSummaryData,
+  type ContactStartData,
+  type ContactStatus,
+  type ContactVerifyData,
   type CreateFeeData,
+  type CycleDecisionData,
   DEFAULT_DEMO_PERIOD,
   LOCALE_OPTIONS,
   type Locale,
   type MeData,
+  type OutreachConsent,
+  type OutreachConsentData,
+  type ParentBillingData,
+  type ParentDecision,
   type ParentFee,
   type ParentFeesData,
   type RazPreviewData,
+  type RefundCaseView,
   type Role,
+  type SubscriptionEnrolData,
   type VerifyOrderData,
   isValidPeriod,
 } from './types';
 
-export type FixtureScenario = 'fresh' | 'smoke';
+export type FixtureScenario = 'fresh' | 'smoke' | 'cancellation' | 'recovery' | 'refund';
 export type SimulatedVerifyOutcome = 'paid' | 'processing';
 
 export interface FixtureFeeRecord extends ParentFee {
   orderId?: string;
   paymentSessionId?: string;
+  refundedPaise?: number;
 }
 
 export interface FixtureState {
@@ -28,6 +42,11 @@ export interface FixtureState {
   role: Role;
   simulatedVerifyOutcome: SimulatedVerifyOutcome;
   fees: FixtureFeeRecord[];
+  billing: ParentBillingData;
+  maskedPhone: string | null;
+  pendingChallengeId: string | null;
+  notifications: CoachNotification[];
+  refunds: RefundCaseView[];
 }
 
 export const FIXTURE_ACADEMY_NAME = 'First Touch Academy';
@@ -36,14 +55,33 @@ export const FIXTURE_PLAYER_NAME = 'Demo Player';
 export const FIXTURE_FEE_ID = 'fee-fixture-01';
 export const FIXTURE_ORDER_ID = 'order-fixture-01';
 export const FIXTURE_PAYMENT_SESSION_ID = 'session-fixture-sandbox-01';
+export const FIXTURE_SANDBOX_OTP = '482910';
 
-const STORAGE_KEY = 'cleansheet_fixture_state_v1';
+const STORAGE_KEY = 'cleansheet_fixture_state_v2';
 export const FIXTURE_EVENT_NAME = 'cleansheet-fixture-updated';
 
 function createInitialState(
   scenario: FixtureScenario = 'fresh',
   role: Role = 'coach',
 ): FixtureState {
+  const baseBilling: ParentBillingData = {
+    subscription: {
+      id: 'sub-u12-demo-01',
+      status: 'active',
+      nextDueAt: '2026-12-01T06:00:00Z',
+    },
+    cycle: {
+      id: 'cycle-u12-2026-11',
+      period: DEFAULT_DEMO_PERIOD,
+      amountPaise: 150000,
+      dueAt: '2026-11-25T18:00:00Z',
+      status: 'awaiting_decision',
+      recoveryUrl: null,
+    },
+    contactStatus: 'unverified',
+    outreachConsent: 'withheld',
+  };
+
   if (scenario === 'smoke') {
     return {
       scenario: 'smoke',
@@ -57,6 +95,143 @@ function createInitialState(
           amountPaise: 150000,
           currency: 'INR',
           status: 'unpaid',
+          refundedPaise: 0,
+        },
+      ],
+      billing: baseBilling,
+      maskedPhone: null,
+      pendingChallengeId: null,
+      notifications: [],
+      refunds: [],
+    };
+  }
+
+  if (scenario === 'cancellation') {
+    return {
+      scenario: 'cancellation',
+      role,
+      simulatedVerifyOutcome: 'paid',
+      fees: [
+        {
+          id: FIXTURE_FEE_ID,
+          playerName: FIXTURE_PLAYER_NAME,
+          period: DEFAULT_DEMO_PERIOD,
+          amountPaise: 150000,
+          currency: 'INR',
+          status: 'unpaid',
+          refundedPaise: 0,
+        },
+      ],
+      billing: {
+        subscription: { id: 'sub-u12-demo-01', status: 'cancelled', nextDueAt: null },
+        cycle: {
+          id: 'cycle-u12-2026-11',
+          period: DEFAULT_DEMO_PERIOD,
+          amountPaise: 150000,
+          dueAt: '2026-11-25T18:00:00Z',
+          status: 'closed',
+          recoveryUrl: null,
+        },
+        contactStatus: 'verified',
+        outreachConsent: 'granted',
+      },
+      maskedPhone: '+91 ••••••4321',
+      pendingChallengeId: null,
+      notifications: [
+        {
+          id: 'notif-cancel-01',
+          kind: 'subscription_cancelled',
+          occurredAt: '2026-11-21T07:30:00Z',
+          subjectLabel: 'Demo Player (2026-11) mandate cancelled — coach Relay call queued',
+        },
+      ],
+      refunds: [],
+    };
+  }
+
+  if (scenario === 'recovery') {
+    return {
+      scenario: 'recovery',
+      role,
+      simulatedVerifyOutcome: 'paid',
+      fees: [
+        {
+          id: FIXTURE_FEE_ID,
+          playerName: FIXTURE_PLAYER_NAME,
+          period: DEFAULT_DEMO_PERIOD,
+          amountPaise: 150000,
+          currency: 'INR',
+          status: 'unpaid',
+          refundedPaise: 0,
+        },
+      ],
+      billing: {
+        subscription: { id: 'sub-u12-demo-01', status: 'active', nextDueAt: '2026-12-01T06:00:00Z' },
+        cycle: {
+          id: 'cycle-u12-2026-11',
+          period: DEFAULT_DEMO_PERIOD,
+          amountPaise: 150000,
+          dueAt: '2026-11-25T18:00:00Z',
+          status: 'recovery_available',
+          recoveryUrl: 'https://sandbox.cashfree.com/pg/recovery/cycle-u12-2026-11',
+        },
+        contactStatus: 'verified',
+        outreachConsent: 'granted',
+      },
+      maskedPhone: '+91 ••••••4321',
+      pendingChallengeId: null,
+      notifications: [],
+      refunds: [],
+    };
+  }
+
+  if (scenario === 'refund') {
+    return {
+      scenario: 'refund',
+      role,
+      simulatedVerifyOutcome: 'paid',
+      fees: [
+        {
+          id: FIXTURE_FEE_ID,
+          playerName: FIXTURE_PLAYER_NAME,
+          period: DEFAULT_DEMO_PERIOD,
+          amountPaise: 150000,
+          currency: 'INR',
+          status: 'paid',
+          orderId: FIXTURE_ORDER_ID,
+          refundedPaise: 0,
+        },
+      ],
+      billing: {
+        subscription: { id: 'sub-u12-demo-01', status: 'active', nextDueAt: '2026-12-01T06:00:00Z' },
+        cycle: {
+          id: 'cycle-u12-2026-11',
+          period: DEFAULT_DEMO_PERIOD,
+          amountPaise: 150000,
+          dueAt: '2026-11-25T18:00:00Z',
+          status: 'paid',
+          recoveryUrl: null,
+        },
+        contactStatus: 'verified',
+        outreachConsent: 'granted',
+      },
+      maskedPhone: '+91 ••••••4321',
+      pendingChallengeId: null,
+      notifications: [
+        {
+          id: 'notif-paid-01',
+          kind: 'payment_succeeded',
+          occurredAt: '2026-11-21T07:20:00Z',
+          subjectLabel: 'Demo Player (2026-11) verified via Cashfree PG Sandbox',
+          amountPaise: 150000,
+        },
+      ],
+      refunds: [
+        {
+          caseId: 'case-u12-2026-11',
+          refundId: null,
+          status: 'requested',
+          amountPaise: 50000,
         },
       ],
     };
@@ -67,6 +242,11 @@ function createInitialState(
     role,
     simulatedVerifyOutcome: 'paid',
     fees: [],
+    billing: baseBilling,
+    maskedPhone: null,
+    pendingChallengeId: null,
+    notifications: [],
+    refunds: [],
   };
 }
 
@@ -89,10 +269,13 @@ export function getFixtureState(): FixtureState {
       return createInitialState('fresh', 'coach');
     }
     const parsed = JSON.parse(raw) as Partial<FixtureState>;
+    const validScenarios: FixtureScenario[] = ['fresh', 'smoke', 'cancellation', 'recovery', 'refund'];
     if (
-      (parsed.scenario === 'fresh' || parsed.scenario === 'smoke') &&
+      parsed.scenario &&
+      validScenarios.includes(parsed.scenario) &&
       (parsed.role === 'coach' || parsed.role === 'parent') &&
-      Array.isArray(parsed.fees)
+      Array.isArray(parsed.fees) &&
+      parsed.billing
     ) {
       return {
         scenario: parsed.scenario,
@@ -100,6 +283,11 @@ export function getFixtureState(): FixtureState {
         simulatedVerifyOutcome:
           parsed.simulatedVerifyOutcome === 'processing' ? 'processing' : 'paid',
         fees: parsed.fees,
+        billing: parsed.billing,
+        maskedPhone: parsed.maskedPhone ?? null,
+        pendingChallengeId: parsed.pendingChallengeId ?? null,
+        notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
+        refunds: Array.isArray(parsed.refunds) ? parsed.refunds : [],
       };
     }
   } catch {
@@ -115,7 +303,7 @@ function saveFixtureState(state: FixtureState): void {
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     } catch {
-      // Ignore storage quota errors in restricted environments.
+      // Ignore storage errors.
     }
     emitFixtureUpdate();
   }
@@ -164,7 +352,6 @@ export function setFixtureFeeStatusForTesting(
 }
 
 function normalizeIndicDigits(input: string): string {
-  // Normalize Devanagari (U+0966..U+096F) and Kannada (U+0CE6..U+0CEF) digits to ASCII.
   return input
     .replace(/[\u0966-\u096F]/g, (ch) => String(ch.charCodeAt(0) - 0x0966))
     .replace(/[\u0CE6-\u0CEF]/g, (ch) => String(ch.charCodeAt(0) - 0x0ce6));
@@ -172,7 +359,6 @@ function normalizeIndicDigits(input: string): string {
 
 function extractRupeeAmount(rawText: string): number | null {
   const normalized = normalizeIndicDigits(rawText)
-    // Remove common period/squad/year tokens so 2026 or U12 is never mistaken for ₹2,026 or ₹12.
     .replace(/\b\d{4}-\d{2}\b/g, ' ')
     .replace(/\bu\s*\d+\b/gi, ' ')
     .replace(/\b20\d{2}\b/g, ' ')
@@ -221,8 +407,10 @@ export function fixtureGetCoachSummary(period: string): ApiResponse<CoachSummary
   const expectedPaise = scopedFees.reduce((sum, fee) => sum + fee.amountPaise, 0);
   const collectedPaise = scopedFees
     .filter((fee) => fee.status === 'paid')
+    .reduce((sum, fee) => sum + Math.max(0, fee.amountPaise - (fee.refundedPaise ?? 0)), 0);
+  const outstandingPaise = scopedFees
+    .filter((fee) => fee.status !== 'paid')
     .reduce((sum, fee) => sum + fee.amountPaise, 0);
-  const outstandingPaise = expectedPaise - collectedPaise;
   const paidFeeCount = scopedFees.filter((fee) => fee.status === 'paid').length;
 
   return {
@@ -288,6 +476,9 @@ export function fixtureRazFeePreview(input: {
     };
   }
 
+  const summaryRes = fixtureGetCoachSummary(input.period);
+  const mcpSummary = summaryRes.ok ? summaryRes.data : undefined;
+
   const localeOption =
     LOCALE_OPTIONS.find((item) => item.value === input.locale) ?? LOCALE_OPTIONS[0];
 
@@ -310,12 +501,13 @@ export function fixtureRazFeePreview(input: {
           period: input.period,
           amountPaise: 150000,
         },
+        mcpSummary,
       },
     };
   }
 
   const trimmed = (input.text ?? '').trim();
-  if (!trimmed || /\b(ambiguous|unclear|hello|test|hi)\b/i.test(trimmed)) {
+  if (!trimmed || /\b(ambiguous|unclear|unknown|cancel|hello|test|hi)\b/i.test(trimmed)) {
     return {
       ok: false,
       error: {
@@ -346,6 +538,7 @@ export function fixtureRazFeePreview(input: {
         period: input.period,
         amountPaise: rupees * 100,
       },
+      mcpSummary,
     },
   };
 }
@@ -402,6 +595,7 @@ export function fixtureConfirmFee(input: {
     amountPaise: input.amountPaise,
     currency: 'INR',
     status: 'unpaid',
+    refundedPaise: 0,
   };
 
   saveFixtureState({
@@ -492,11 +686,35 @@ export function fixtureVerifyOrder(orderId: string): ApiResponse<VerifyOrderData
   }
 
   const nextStatus = state.simulatedVerifyOutcome === 'processing' ? 'processing' : 'paid';
+  const nextNotifications =
+    nextStatus === 'paid' && !state.notifications.some((n) => n.kind === 'payment_succeeded')
+      ? [
+          {
+            id: `notif-paid-${Date.now()}`,
+            kind: 'payment_succeeded' as const,
+            occurredAt: new Date().toISOString(),
+            subjectLabel: `${target.playerName} (${target.period}) verified via Cashfree PG Sandbox`,
+            amountPaise: target.amountPaise,
+          },
+          ...state.notifications,
+        ]
+      : state.notifications;
+
+  const nextBilling =
+    nextStatus === 'paid' && state.billing.cycle
+      ? {
+          ...state.billing,
+          cycle: { ...state.billing.cycle, status: 'paid' as const, recoveryUrl: null },
+        }
+      : state.billing;
+
   saveFixtureState({
     ...state,
     fees: state.fees.map((fee) =>
       fee.id === target.id ? { ...fee, status: nextStatus } : fee,
     ),
+    billing: nextBilling,
+    notifications: nextNotifications,
   });
 
   return {
@@ -506,4 +724,243 @@ export function fixtureVerifyOrder(orderId: string): ApiResponse<VerifyOrderData
       feeStatus: nextStatus,
     },
   };
+}
+
+export function fixtureGetParentBilling(): ApiResponse<ParentBillingData> {
+  const state = getFixtureState();
+  if (state.role !== 'parent') {
+    return {
+      ok: false,
+      error: { code: 'FORBIDDEN', message: 'Parent access required.' },
+    };
+  }
+  return { ok: true, data: state.billing };
+}
+
+export function fixtureStartContact(phone: string): ApiResponse<ContactStartData> {
+  const state = getFixtureState();
+  if (state.role !== 'parent') {
+    return { ok: false, error: { code: 'FORBIDDEN', message: 'Parent access required.' } };
+  }
+  const digits = phone.replace(/[^\d]/g, '');
+  if (digits.length < 10) {
+    return {
+      ok: false,
+      error: { code: 'INVALID_CONTACT', message: 'Enter a valid 10-digit mobile number.' },
+    };
+  }
+  const maskedPhone = `+91 ••••••${digits.slice(-4)}`;
+  const challengeId = 'cs-0123456789abcdef0123456789abcdef';
+  const expiresAt = new Date(Date.now() + 5 * 60_000).toISOString();
+
+  saveFixtureState({
+    ...state,
+    maskedPhone,
+    pendingChallengeId: challengeId,
+    billing: {
+      ...state.billing,
+      contactStatus: 'pending',
+    },
+  });
+
+  return {
+    ok: true,
+    data: { challengeId, maskedPhone, expiresAt },
+  };
+}
+
+export function fixtureVerifyContact(
+  challengeId: string,
+  otp: string,
+): ApiResponse<ContactVerifyData> {
+  const state = getFixtureState();
+  if (state.role !== 'parent') {
+    return { ok: false, error: { code: 'FORBIDDEN', message: 'Parent access required.' } };
+  }
+  if (!challengeId || state.pendingChallengeId !== challengeId) {
+    return {
+      ok: false,
+      error: { code: 'CHALLENGE_NOT_FOUND', message: 'Request a verification code first.' },
+    };
+  }
+  if (otp !== FIXTURE_SANDBOX_OTP) {
+    return {
+      ok: false,
+      error: {
+        code: 'INVALID_OTP',
+        message: `Use the sandbox OTP ${FIXTURE_SANDBOX_OTP} to verify in fixture mode.`,
+      },
+    };
+  }
+
+  const nextStatus: ContactStatus = 'verified';
+  const maskedPhone = state.maskedPhone ?? '+91 ••••••4321';
+  saveFixtureState({
+    ...state,
+    pendingChallengeId: null,
+    billing: {
+      ...state.billing,
+      contactStatus: nextStatus,
+    },
+  });
+
+  return {
+    ok: true,
+    data: { contactStatus: nextStatus, maskedPhone },
+  };
+}
+
+export function fixtureSetOutreachConsent(granted: boolean): ApiResponse<OutreachConsentData> {
+  const state = getFixtureState();
+  if (state.role !== 'parent') {
+    return { ok: false, error: { code: 'FORBIDDEN', message: 'Parent access required.' } };
+  }
+  const outreachConsent: OutreachConsent = granted ? 'granted' : 'withheld';
+  saveFixtureState({
+    ...state,
+    billing: { ...state.billing, outreachConsent },
+  });
+  return { ok: true, data: { outreachConsent } };
+}
+
+export function fixtureEnrolSubscription(): ApiResponse<SubscriptionEnrolData> {
+  const state = getFixtureState();
+  if (state.role !== 'parent') {
+    return { ok: false, error: { code: 'FORBIDDEN', message: 'Parent access required.' } };
+  }
+  const nextSub = {
+    id: 'sub-u12-demo-01',
+    status: 'active' as const,
+    nextDueAt: '2026-12-01T06:00:00Z',
+  };
+  saveFixtureState({
+    ...state,
+    billing: { ...state.billing, subscription: nextSub },
+  });
+  return {
+    ok: true,
+    data: {
+      subscriptionId: nextSub.id,
+      mandateUrl: 'https://sandbox.cashfree.com/subscriptions/mandate-demo',
+      status: nextSub.status,
+    },
+  };
+}
+
+export function fixtureRecordParentDecision(
+  cycleId: string,
+  decision: ParentDecision,
+): ApiResponse<CycleDecisionData> {
+  const state = getFixtureState();
+  if (state.role !== 'parent') {
+    return { ok: false, error: { code: 'FORBIDDEN', message: 'Parent access required.' } };
+  }
+  if (!state.billing.cycle || state.billing.cycle.id !== cycleId) {
+    return { ok: false, error: { code: 'CYCLE_NOT_FOUND', message: 'Billing cycle not found.' } };
+  }
+
+  if (decision === 'cancel_subscription') {
+    const updatedCycle = { ...state.billing.cycle, status: 'closed' as const };
+    const updatedSub = state.billing.subscription
+      ? { ...state.billing.subscription, status: 'cancel_pending' as const }
+      : null;
+    const cancelNotif: CoachNotification = {
+      id: `notif-cancel-${Date.now()}`,
+      kind: 'subscription_cancelled',
+      occurredAt: new Date().toISOString(),
+      subjectLabel: `${FIXTURE_PLAYER_NAME} (${updatedCycle.period}) mandate cancelled — coach call queued`,
+    };
+    saveFixtureState({
+      ...state,
+      billing: { ...state.billing, cycle: updatedCycle, subscription: updatedSub },
+      notifications: [cancelNotif, ...state.notifications],
+    });
+    return {
+      ok: true,
+      data: {
+        cycleStatus: updatedCycle.status,
+        subscriptionStatus: updatedSub?.status ?? 'cancel_pending',
+      },
+    };
+  }
+
+  const updatedCycle = { ...state.billing.cycle, status: 'decision_recorded' as const };
+  saveFixtureState({
+    ...state,
+    billing: { ...state.billing, cycle: updatedCycle },
+  });
+  return {
+    ok: true,
+    data: {
+      cycleStatus: updatedCycle.status,
+      subscriptionStatus: state.billing.subscription?.status ?? 'active',
+    },
+  };
+}
+
+export function fixtureListCoachNotifications(): ApiResponse<CoachNotificationsData> {
+  const state = getFixtureState();
+  if (state.role !== 'coach') {
+    return { ok: false, error: { code: 'FORBIDDEN', message: 'Coach access required.' } };
+  }
+  return { ok: true, data: { notifications: state.notifications } };
+}
+
+export function fixtureListCoachRefunds(): ApiResponse<CoachRefundsData> {
+  const state = getFixtureState();
+  if (state.role !== 'coach') {
+    return { ok: false, error: { code: 'FORBIDDEN', message: 'Coach access required.' } };
+  }
+  return { ok: true, data: { refunds: state.refunds } };
+}
+
+export function fixtureApproveCoachRefund(
+  caseId: string,
+  amountPaise: number,
+): ApiResponse<RefundCaseView> {
+  const state = getFixtureState();
+  if (state.role !== 'coach') {
+    return { ok: false, error: { code: 'FORBIDDEN', message: 'Coach access required.' } };
+  }
+  const target = state.refunds.find((item) => item.caseId === caseId);
+  if (!target) {
+    return { ok: false, error: { code: 'REFUND_NOT_FOUND', message: 'Refund case not found.' } };
+  }
+  if (!Number.isSafeInteger(amountPaise) || amountPaise <= 0 || amountPaise > 150000) {
+    return {
+      ok: false,
+      error: {
+        code: 'INVALID_AMOUNT',
+        message: 'Refund must stay within the paid ₹1,500 fee balance.',
+      },
+    };
+  }
+
+  const approved: RefundCaseView = {
+    caseId,
+    refundId: target.refundId ?? `rfnd-sandbox-${caseId}`,
+    status: 'refunded',
+    amountPaise,
+  };
+  const nextFees = state.fees.map((fee) =>
+    fee.status === 'paid'
+      ? { ...fee, refundedPaise: Math.min(fee.amountPaise, amountPaise) }
+      : fee,
+  );
+  const refundNotif: CoachNotification = {
+    id: `notif-refund-${Date.now()}`,
+    kind: 'refund_approved',
+    occurredAt: new Date().toISOString(),
+    subjectLabel: `${FIXTURE_PLAYER_NAME} refund reconciled (${caseId})`,
+    amountPaise,
+  };
+
+  saveFixtureState({
+    ...state,
+    fees: nextFees,
+    refunds: state.refunds.map((item) => (item.caseId === caseId ? approved : item)),
+    notifications: [refundNotif, ...state.notifications],
+  });
+
+  return { ok: true, data: approved };
 }

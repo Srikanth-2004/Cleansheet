@@ -24,12 +24,14 @@
   },
   "include": [
     "next-env.d.ts",
+    "src/middleware.ts",
     "src/app/**/*.ts",
     "src/app/**/*.tsx",
     "src/components/**/*.ts",
     "src/components/**/*.tsx",
     "src/lib/client/**/*.ts",
     "src/lib/providers/**/*.ts",
+    "src/lib/server/firebase-*.ts",
     ".next/types/**/*.ts"
   ],
   "exclude": ["node_modules"]
