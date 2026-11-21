@@ -1,4 +1,5 @@
 import { SarvamAI, SarvamAIClient } from 'sarvamai';
+import { DEFAULT_MONTHLY_FEE_PAISE } from '../../contracts/billing.js';
 import type { BillingVoiceLocale } from '../../contracts/voice.js';
 import { observeProvider } from '../server/observability.js';
 
@@ -37,14 +38,13 @@ const FEE_PREVIEW_TOOL: SarvamAI.ChatCompletionTool = {
   function: {
     name: 'prepare_fee_preview',
     description:
-      'Prepare a football academy fee preview from a coach command without writing any database records. Set isAmbiguous=true if no clear fee amount is provided.',
+      'Prepare a football academy fee preview when the coach clearly asks to create, set or publish a fee. Use the standard fee when the amount is omitted.',
     parameters: {
       type: 'object',
       properties: {
         amountRupees: {
           type: 'number',
-          description:
-            'Monthly fee amount in whole Indian rupees (for example 1500). Must be 0 if not clearly stated.',
+          description: `The stated amount in Indian rupees. Use ${DEFAULT_MONTHLY_FEE_PAISE / 100} for a clear fee creation request with no stated amount. Use 0 for unclear or unrelated requests.`,
         },
         period: {
           type: 'string',
@@ -53,8 +53,7 @@ const FEE_PREVIEW_TOOL: SarvamAI.ChatCompletionTool = {
         },
         isAmbiguous: {
           type: 'boolean',
-          description:
-            'True when the input does not specify a clear fee amount or fee-setting command.',
+          description: 'True only when the request does not clearly ask to create or set a fee, or the stated amount is contradictory.',
         },
         reason: {
           type: 'string',
@@ -110,7 +109,7 @@ export async function synthesizeBillingSpeech(
     if (!response.ok) throw new Error('Sarvam synthesis failed.');
     const { audios } = await response.json() as { audios?: unknown };
     const audio = Array.isArray(audios) ? audios[0] : undefined;
-    if (typeof audio !== 'string' || !audio || audio.length > 256_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(audio)) {
+    if (typeof audio !== 'string' || !audio || audio.length > 512_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(audio)) {
       throw new Error('Sarvam returned invalid audio.');
     }
     return { audioUrl: `data:audio/mpeg;base64,${audio}` };
@@ -132,7 +131,7 @@ export async function transcribeWithSaarasV4(input: {
       file: {
         data: input.audioBuffer,
         filename: input.fileName,
-        contentType: input.mimeType || 'audio/webm',
+        contentType: input.mimeType.split(';', 1)[0] || 'audio/webm',
       },
       model: 'saaras:v4',
       language_code: input.locale,
@@ -152,8 +151,11 @@ export async function transcribeWithSaarasV4(input: {
     if (err instanceof SarvamProviderError) {
       throw err;
     }
-    const detail = err instanceof Error ? err.message : 'Speech-to-text request failed.';
-    throw new SarvamProviderError('SARVAM_STT_ERROR', detail, 502);
+    const httpStatus = (err as { statusCode?: number } | null)?.statusCode;
+    if (httpStatus && [400, 413, 415, 422].includes(httpStatus)) {
+      throw new SarvamProviderError('SARVAM_AUDIO_REJECTED', 'Sarvam could not read the recording. Try a short voice command.', 400);
+    }
+    throw new SarvamProviderError('SARVAM_STT_ERROR', 'Speech recognition is temporarily unavailable. Try again or type your command.', 502);
   }
 }
 
@@ -187,12 +189,14 @@ export async function interpretFeeCommandWithSarvam105B(input: {
 
   const systemPrompt = [
     'You are Raz, the fee-preview assistant for First Touch Academy (U12 squad).',
-    'You only prepare a single fee preview by calling prepare_fee_preview. Never invent amounts.',
+    'You only prepare a single fee preview by calling prepare_fee_preview. Do not charge, alter, cancel or refund a payment.',
     `The user may speak or type in Hindi (hi-IN), Kannada (kn-IN), or English. Selected locale: ${input.locale}.`,
     `Default billing period is ${input.defaultPeriod} (YYYY-MM).`,
     summaryLine,
-    'If the command clearly states a monthly fee amount in rupees (e.g. 1500, ₹1,500, 1500 रुपये, ೧೫೦೦ ರೂಪಾಯಿ), call prepare_fee_preview with isAmbiguous=false, amountRupees=<number>, and period="YYYY-MM".',
-    'If the command is greeting-only, ambiguous, or missing a rupee fee amount, call prepare_fee_preview with isAmbiguous=true and amountRupees=0.',
+    'For an explicit fee amount, convert the spoken number to rupees. For example, पंद्रह सौ, पन्द्रह सौ, डेढ़ हज़ार, and ಒಂದು ಸಾವಿರದ ಐನೂರು all mean 1500. An amount is different from a month or a year.',
+    `A clear request to create a fee without stating an amount is valid. Call prepare_fee_preview with isAmbiguous=false and amountRupees=${DEFAULT_MONTHLY_FEE_PAISE / 100}.`,
+    'Examples of clear requests with no amount: “Create this month’s fee”, “इस महीने की फीस बना दो”, “मासिक फीस जारी करो”, “ಈ ತಿಂಗಳ ಶುಲ್ಕ ರಚಿಸಿ”. Use the default period for “this month” or an unspecified month.',
+    'For greetings, payment-status questions, or requests to pay, cancel or refund an existing fee, call prepare_fee_preview with isAmbiguous=true and amountRupees=0.',
   ].filter(Boolean).join(' ');
 
   let completion: SarvamAI.CreateChatCompletionResponse;
@@ -221,7 +225,7 @@ export async function interpretFeeCommandWithSarvam105B(input: {
   if (!toolCall) {
     throw new SarvamProviderError(
       'INVALID_COMMAND',
-      'Raz could not extract a clear fee amount and month. Please state the rupee fee (for example, ₹1,500) and try again.',
+      'Raz could not identify a request to create a fee. Try “Create this month’s fee”.',
       400,
     );
   }
@@ -238,9 +242,8 @@ export async function interpretFeeCommandWithSarvam105B(input: {
   }
 
   const amountRupees = Number(parsedArgs.amountRupees);
-  const isAmbiguous = parsedArgs.isAmbiguous === true;
   if (
-    isAmbiguous ||
+    (parsedArgs.isAmbiguous !== false && parsedArgs.isAmbiguous !== 'false') ||
     !Number.isFinite(amountRupees) ||
     amountRupees <= 0 ||
     amountRupees > 100000
@@ -248,7 +251,7 @@ export async function interpretFeeCommandWithSarvam105B(input: {
     const hint =
       typeof parsedArgs.reason === 'string' && parsedArgs.reason.trim()
         ? parsedArgs.reason.trim()
-        : 'Include a clear fee amount in rupees (for example, ₹1,500) and try again.';
+        : 'Ask Raz to create a monthly fee. You can include an amount to override the standard fee.';
     throw new SarvamProviderError('INVALID_COMMAND', hint, 400);
   }
 

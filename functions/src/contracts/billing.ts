@@ -2,6 +2,7 @@ export type Role = 'coach' | 'parent';
 export type FeeStatus = 'unpaid' | 'processing' | 'paid';
 export type Currency = 'INR';
 export type PaymentRail = 'pg' | 'subscription';
+export const DEFAULT_MONTHLY_FEE_PAISE = 150_000;
 
 export interface Fee {
   id: string;

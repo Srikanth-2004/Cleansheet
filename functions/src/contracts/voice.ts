@@ -1,7 +1,7 @@
 export const cancellationQuestions = {
   'en-IN': 'Hi, I’m CleanSheet. Do you want to cancel this subscription and stop future automatic payments? Please say yes or no.',
-  'hi-IN': 'नमस्ते, मैं क्लीनशीट हूँ। क्या आप यह सदस्यता रद्द करके आगे के स्वचालित भुगतान रोकना चाहते हैं? कृपया हाँ या नहीं कहें।',
-  'kn-IN': 'ನಮಸ್ಕಾರ, ನಾನು ಕ್ಲೀನ್‌ಶೀಟ್. ಈ ಚಂದಾದಾರಿಕೆಯನ್ನು ರದ್ದುಮಾಡಿ ಮುಂದಿನ ಸ್ವಯಂಚಾಲಿತ ಪಾವತಿಗಳನ್ನು ನಿಲ್ಲಿಸಲು ಬಯಸುವಿರಾ? ದಯವಿಟ್ಟು ಹೌದು ಅಥವಾ ಇಲ್ಲ ಎಂದು ಹೇಳಿ.',
+  'hi-IN': 'नमस्ते। यह क्लीन शीट है। क्या आप इस सदस्यता का ऑटो पे बंद करना चाहते हैं? बंद करने के लिए हाँ कहें। जारी रखने के लिए नहीं कहें।',
+  'kn-IN': 'ನಮಸ್ಕಾರ. ಇದು ಕ್ಲೀನ್ ಶೀಟ್. ಈ ಚಂದಾದಾರಿಕೆಯ ಆಟೋ ಪೇ ನಿಲ್ಲಿಸಬೇಕಾ? ನಿಲ್ಲಿಸಲು ಹೌದು ಎಂದು ಹೇಳಿ. ಮುಂದುವರಿಸಲು ಇಲ್ಲ ಎಂದು ಹೇಳಿ.',
 } as const;
 
 export type BillingVoiceLocale = keyof typeof cancellationQuestions;

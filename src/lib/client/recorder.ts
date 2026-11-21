@@ -33,6 +33,41 @@ export function detectSupportedAudioMimeType(): string | null {
   return '';
 }
 
+async function toSpeechWav(recording: Blob): Promise<Blob> {
+  const sampleRate = 16_000;
+  // decodeAudioData resamples to the context rate before the PCM WAV is encoded.
+  const decoder = new OfflineAudioContext(1, 1, sampleRate);
+  const decoded = await decoder.decodeAudioData(await recording.arrayBuffer());
+
+  const samples = decoded.getChannelData(0);
+  const secondChannel = decoded.numberOfChannels > 1 ? decoded.getChannelData(1) : undefined;
+  const headerBytes = 44;
+  const pcmBytes = samples.length * 2;
+  const wav = new DataView(new ArrayBuffer(headerBytes + pcmBytes));
+  const writeTag = (offset: number, tag: string) => {
+    for (let index = 0; index < tag.length; index++) wav.setUint8(offset + index, tag.charCodeAt(index));
+  };
+  writeTag(0, 'RIFF');
+  wav.setUint32(4, 36 + pcmBytes, true);
+  writeTag(8, 'WAVE');
+  writeTag(12, 'fmt ');
+  wav.setUint32(16, 16, true);
+  wav.setUint16(20, 1, true);
+  wav.setUint16(22, 1, true);
+  wav.setUint32(24, sampleRate, true);
+  wav.setUint32(28, sampleRate * 2, true);
+  wav.setUint16(32, 2, true);
+  wav.setUint16(34, 16, true);
+  writeTag(36, 'data');
+  wav.setUint32(40, pcmBytes, true);
+  for (let index = 0; index < samples.length; index++) {
+    const rawSample = secondChannel ? (samples[index] + secondChannel[index]) / 2 : samples[index];
+    const sample = Math.max(-1, Math.min(1, rawSample));
+    wav.setInt16(headerBytes + index * 2, sample < 0 ? sample * 32768 : sample * 32767, true);
+  }
+  return new Blob([wav.buffer], { type: 'audio/wav' });
+}
+
 export function createAudioRecorder(): BrowserAudioRecorder {
   let mediaRecorder: MediaRecorder | null = null;
   let mediaStream: MediaStream | null = null;
@@ -126,17 +161,26 @@ export function createAudioRecorder(): BrowserAudioRecorder {
         const recorder = mediaRecorder;
         const resolvedMimeType = recorder.mimeType || activeMimeType || 'audio/webm';
 
-        recorder.onstop = () => {
+        recorder.onstop = async () => {
           const durationMs = Math.max(0, Date.now() - startedAt);
-          const blob = new Blob(chunks, { type: resolvedMimeType });
+          const recording = new Blob(chunks, { type: resolvedMimeType });
           cleanupAudioGraph();
           mediaRecorder = null;
           chunks = [];
-          resolve({
-            blob,
-            mimeType: resolvedMimeType,
-            durationMs,
-          });
+          if (!recording.size) {
+            reject(new Error('No audio was captured. Record again and speak into the microphone.'));
+            return;
+          }
+          if (durationMs > 30_000) {
+            reject(new Error('Recording is longer than 30 seconds. Try a shorter command.'));
+            return;
+          }
+          try {
+            const blob = await toSpeechWav(recording);
+            resolve({ blob, mimeType: blob.type, durationMs });
+          } catch {
+            reject(new Error('The recording could not be decoded. Record again or type your command.'));
+          }
         };
 
         recorder.onerror = () => {

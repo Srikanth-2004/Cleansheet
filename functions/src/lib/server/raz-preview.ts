@@ -52,7 +52,7 @@ export async function previewRazFee(
     return await generateRazFeePreview({ text: transcript, period: input.period, locale: input.locale, feeSummary }, apiKey);
   } catch (error) {
     if (error instanceof SarvamProviderError) {
-      const providerError = error.status >= 500 ? 'Sarvam could not produce a fee preview.' : error.message;
+      const providerError = error.status >= 500 && error.code !== 'SARVAM_STT_ERROR' ? 'Sarvam could not produce a fee preview.' : error.message;
       throw new HttpError(error.status, error.code, providerError);
     }
     throw error;

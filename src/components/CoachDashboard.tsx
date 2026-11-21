@@ -1,6 +1,7 @@
 'use client';
 
 import { AnimatePresence, motion } from 'motion/react';
+import { DEFAULT_MONTHLY_FEE_PAISE } from '../../functions/src/contracts/billing';
 import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useId, useRef, useState } from 'react';
 import {
   approveCoachRefund,
@@ -533,8 +534,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
             Ask Raz to Prepare a Fee
           </h2>
           <p className="section-caption">
-            Record in Hindi or Kannada, or type the command through the same Sarvam AI + MCP tool
-            path.
+            Say or type “Create this month’s fee” to preview the standard {formatPaise(DEFAULT_MONTHLY_FEE_PAISE)} fee.
           </p>
 
           <fieldset className="fieldset-clean">

@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { fetchCancellationPrompt, recognizeParentCancellationAnswer } from '@/lib/client/api';
+import { useEffect, useRef, useState } from 'react';
+import { recognizeParentCancellationAnswer } from '@/lib/client/api';
 import { createAudioRecorder, type BrowserAudioRecorder } from '@/lib/client/recorder';
 import { cancellationQuestions, type BillingVoiceLocale as PromptLocale } from '../../functions/src/contracts/voice';
 
@@ -36,50 +36,31 @@ export function ParentCancellationPrompt({ onConfirm, onKeep }: { onConfirm(): v
   const [recording, setRecording] = useState<'idle' | 'starting' | 'recording' | 'checking'>('idle');
   const [message, setMessage] = useState('');
   const [playbackError, setPlaybackError] = useState(false);
-  const [usingOfflineAudio, setUsingOfflineAudio] = useState(false);
   const audio = useRef<BrowserAudioRecorder | null>(null);
   const player = useRef<HTMLAudioElement | null>(null);
-  const audioUrls = useRef(new Map<PromptLocale, Promise<string | null>>());
-  const playback = useRef(0);
-
-  const playPrompt = useCallback(async (language: PromptLocale, explicit = false) => {
-    const promptPlayer = player.current;
-    if (!promptPlayer) return;
-    const attempt = ++playback.current;
-    promptPlayer.pause();
-    setPlaybackError(false);
-    let pending = audioUrls.current.get(language);
-    if (!pending) {
-      pending = fetchCancellationPrompt(language).then(result => {
-        if (result.ok) return result.data.audioUrl;
-        audioUrls.current.delete(language);
-        return null;
-      });
-      audioUrls.current.set(language, pending);
-    }
-    const sarvamAudio = await pending;
-    if (attempt !== playback.current) return;
-    setUsingOfflineAudio(!sarvamAudio);
-    const source = sarvamAudio ?? `/voice/cancel-${language}.wav`;
-    if (promptPlayer.getAttribute('src') !== source) promptPlayer.setAttribute('src', source);
-    else promptPlayer.currentTime = 0;
-    try {
-      await promptPlayer.play();
-    } catch (error) {
-      if (explicit && attempt === playback.current && (error as Error).name !== 'AbortError') setPlaybackError(true);
-    }
-  }, []);
 
   useEffect(() => {
     const promptPlayer = player.current;
-    void playPrompt(preferredLanguage());
+    if (!audio.current) void promptPlayer?.play().catch(() => {});
+    return () => promptPlayer?.pause();
+  }, [locale]);
+
+  useEffect(() => {
     return () => {
-      playback.current++;
       audio.current?.cancel();
       audio.current = null;
-      promptPlayer?.pause();
     };
-  }, [playPrompt]);
+  }, []);
+
+  function playPrompt() {
+    const promptPlayer = player.current;
+    if (!promptPlayer) return;
+    setPlaybackError(false);
+    promptPlayer.currentTime = 0;
+    void promptPlayer.play().catch(error => {
+      if (error.name !== 'AbortError') setPlaybackError(true);
+    });
+  }
 
   async function recordAnswer() {
     if (recording === 'recording') {
@@ -103,7 +84,6 @@ export function ParentCancellationPrompt({ onConfirm, onKeep }: { onConfirm(): v
     }
     setMessage('');
     setRecording('starting');
-    playback.current++;
     player.current?.pause();
     const recorder = createAudioRecorder();
     audio.current = recorder;
@@ -130,21 +110,20 @@ export function ParentCancellationPrompt({ onConfirm, onKeep }: { onConfirm(): v
         onChange={event => {
           const selected = event.target.value as PromptLocale;
           setLocale(selected);
+          setPlaybackError(false);
           window.localStorage.setItem(languageKey, selected);
-          void playPrompt(selected);
         }}
       >
         {(Object.keys(prompts) as PromptLocale[]).map(option => <option key={option} value={option}>{prompts[option].language}</option>)}
       </select>
-      <audio ref={player} preload="auto" />
+      <audio ref={player} src={`/voice/cancel-${locale}.mp3`} preload="auto" onError={() => setPlaybackError(true)} />
       <p lang={locale}>{cancellationQuestions[locale]}</p>
       <div className="button-row">
-        <button type="button" className="btn btn-secondary" onClick={() => void playPrompt(locale, true)} disabled={recording !== 'idle'}>Play prompt</button>
+        <button type="button" className="btn btn-secondary" onClick={playPrompt} disabled={recording !== 'idle'}>Play prompt</button>
         <button type="button" className="btn btn-secondary" onClick={() => void recordAnswer()} disabled={recording === 'starting' || recording === 'checking'}>
           {recording === 'recording' ? 'Stop and check answer' : recording === 'checking' ? 'Checking answer…' : 'Record Yes or No'}
         </button>
       </div>
-      {usingOfflineAudio && !playbackError && <p className="field-hint">Playing the offline prompt. Sarvam voice is unavailable.</p>}
       {playbackError && <p role="status">Prompt audio is unavailable. Read the question above and select Yes or No.</p>}
       {message && <p role="status">{message}</p>}
       <div className="button-row">

@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
-import { isPeriod, type Actor, type Fee } from '../src/contracts/billing.js';
+import { DEFAULT_MONTHLY_FEE_PAISE, isPeriod, type Actor, type Fee } from '../src/contracts/billing.js';
 import { getCoachFeeSummaryViaMcp } from '../src/lib/server/fee-mcp.js';
 import { createFeeStore } from '../src/lib/server/fee-store.js';
 import { cleanSheetRecords } from '../src/lib/server/firestore.js';
@@ -49,7 +49,7 @@ const parent: Actor = {
 };
 const fee: Fee = {
   id: `${scope.playerId}-${period}`, playerId: scope.playerId, playerName: scope.playerName,
-  period, amountPaise: 150000, currency: 'INR', status: 'unpaid',
+  period, amountPaise: DEFAULT_MONTHLY_FEE_PAISE, currency: 'INR', status: 'unpaid',
 };
 const cycleId = `${scope.playerId}-${period}`;
 const dueAt = new Date(Date.now() + 3 * 86_400_000).toISOString();
