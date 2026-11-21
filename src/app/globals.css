@@ -239,18 +239,22 @@ button:disabled {
 }
 
 .brand-mark {
-  width: 2.5rem;
-  height: 2.5rem;
-  border-radius: 0.65rem;
-  background: linear-gradient(135deg, var(--palette-teal), #7ea5aa);
-  color: var(--palette-plum);
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 0.7rem;
+  background: linear-gradient(145deg, #211c2b, #17131e);
+  border: 1px solid rgba(89, 124, 128, 0.55);
   display: grid;
   place-items: center;
-  font-weight: 700;
-  letter-spacing: -0.04em;
-  font-size: 1.05rem;
   flex-shrink: 0;
-  box-shadow: 0 6px 20px rgba(89, 124, 128, 0.25);
+  box-shadow: 0 6px 20px rgba(89, 124, 128, 0.22);
+}
+
+.brand-logo-img {
+  width: 26px;
+  height: 26px;
+  object-fit: contain;
+  display: block;
 }
 
 .brand-title {

@@ -50,6 +50,12 @@ Run each seed against its own scenario ID. The transaction refuses to overwrite 
 - Sarvam can use `getActor(event, store, 'coach')` and the [coach MCP tool](#coach-mcp-tool). Keep the model and Relay away from direct table credentials.
 - Add authenticated adapter paths to `src/lambda.ts` as they land. When signing checks and the event contract are in place, add specific API Gateway webhook routes with provider authentication. Use the Relay backend plan for subscriptions, cancellation, recovery, Secure ID and refunds.
 
+## Billing and refund handoffs
+
+- `GET /api/coach/refunds` returns the scoped coach's cases. `POST /api/coach/refunds/[caseId]/approve` reserves the approved amount and queues `issue_refund` on the original payment rail. A `202` response means the approval is recorded and provider processing is pending.
+- In `src/lib/server/dynamo-refunds.ts`, `openRefundCase` accepts a stable review case ID and the original verified payment reference. `applyVerifiedRefund` consumes a reconciled provider result for that case. The fee summary shows net collected after verified success, and the paid fee stays closed.
+- `createDynamoSubscriptionPayments` in `src/lib/server/subscription-payments.ts` is the verified-event entry point for the Cashfree adapter. Before submitting the provider charge, the adapter binds `providerSubscriptionId` and `merchantPaymentId` on the scoped cycle and uses the cycle's subscription collection reservation. Success credits the fee and creates one notification atomically. A retryable failure keeps the cycle processing. Once Cashfree confirms final failure and the linked parent's consent is present, the backend records an approval-gated recovery intent. The Relay integration rechecks eligibility before any outreach.
+
 ## Coach MCP tool
 
 `GET /api/coach/summary?period=YYYY-MM` now uses `get_fee_summary` over an in-process MCP client and server. Its HTTP response keeps the same format. The tool reads via the `FeeStore` interface. Input is limited to `{period}` and output contains only expected, collected and outstanding paise and the paid fee count. The signed-in coach's record supplies the scope.

@@ -3,6 +3,7 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, PutCommand, QueryCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import type { Actor, Checkout, CoachNotification, Fee, FeeStore } from '../../contracts/billing.js';
 import { HttpError } from './http.js';
+import { isWriteConflict, paymentRecordKey } from './ledger.js';
 
 type Key = { pk: string; sk: string };
 type OrderRecord = Checkout & { parentUid: string };
@@ -12,8 +13,6 @@ export const documentClient = DynamoDBDocumentClient.from(new DynamoDBClient({})
 });
 
 const digest = (value: string) => createHash('sha256').update(value).digest('hex');
-const isConditionalError = (error: unknown) => error instanceof Error
-  && ['ConditionalCheckFailedException', 'TransactionCanceledException'].includes(error.name);
 
 export function getStorageConfig() {
   const table = process.env.CLEANSHEET_DYNAMODB_TABLE;
@@ -63,7 +62,7 @@ export function createDynamoFeeStore(
         }));
         return fee;
       } catch (error) {
-        if (!isConditionalError(error)) throw error;
+        if (!isWriteConflict(error)) throw error;
         const existing = await read<Fee>(sk);
         if (!existing) throw error;
         if (existing.amountPaise === amountPaise) return existing;
@@ -115,7 +114,7 @@ export function createDynamoFeeStore(
           } },
         ] }));
       } catch (error) {
-        if (!isConditionalError(error)) throw error;
+        if (!isWriteConflict(error)) throw error;
         const reserved = await readOrder(orderId);
         if (reserved?.parentUid === uid) return checkoutView(reserved);
         if (await read(collectionKey)) throw new HttpError(409, 'COLLECTION_IN_PROGRESS', 'A collection path is already active.');
@@ -149,10 +148,10 @@ export function createDynamoFeeStore(
         throw new HttpError(409, 'PAYMENT_MISMATCH', 'The fee and verified order require reconciliation.');
       }
       const result = { feeId: fee.id, feeStatus: 'paid' as const };
-      if (fee.providerPaymentId === providerPaymentId && fee.status === 'paid') return result;
+      if (fee.providerPaymentId === providerPaymentId && (fee.paymentRail ?? 'pg') === 'pg' && fee.status === 'paid') return result;
       if (fee.status === 'paid') throw new HttpError(409, 'DUPLICATE_COLLECTION', 'This fee already has a different payment.');
 
-      const paymentKey = `PAYMENT#PG#${digest(providerPaymentId)}`;
+      const paymentKey = paymentRecordKey('pg', providerPaymentId);
       const occurredAt = new Date().toISOString();
       const notification: CoachNotification = {
         id: `payment-completed-${fee.id}`, kind: 'payment_completed', subjectLabel: fee.playerName,
@@ -162,10 +161,10 @@ export function createDynamoFeeStore(
         await db.send(new TransactWriteCommand({ TransactItems: [
           { Update: {
             TableName: table, Key: key(feeKey),
-            UpdateExpression: 'SET #status = :paid, providerPaymentId = :payment',
+            UpdateExpression: 'SET #status = :paid, providerPaymentId = :payment, paymentRail = :rail',
             ConditionExpression: 'attribute_exists(pk) AND #status <> :paid AND amountPaise = :amount AND currency = :currency',
             ExpressionAttributeNames: { '#status': 'status' },
-            ExpressionAttributeValues: { ':paid': 'paid', ':payment': providerPaymentId, ':amount': order.amountPaise, ':currency': order.currency },
+            ExpressionAttributeValues: { ':paid': 'paid', ':payment': providerPaymentId, ':amount': order.amountPaise, ':currency': order.currency, ':rail': 'pg' },
           } },
           { Put: {
             TableName: table,
@@ -179,9 +178,9 @@ export function createDynamoFeeStore(
         ] }));
         return result;
       } catch (error) {
-        if (!isConditionalError(error)) throw error;
+        if (!isWriteConflict(error)) throw error;
         const current = await read<Fee>(feeKey);
-        if (current?.status === 'paid' && current.providerPaymentId === providerPaymentId) return result;
+        if (current?.status === 'paid' && current.providerPaymentId === providerPaymentId && (current.paymentRail ?? 'pg') === 'pg') return result;
         if (current?.status === 'paid' || await read(paymentKey)) {
           throw new HttpError(409, 'DUPLICATE_COLLECTION', 'A conflicting payment requires reconciliation.');
         }

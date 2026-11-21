@@ -66,7 +66,7 @@ export function AppHeader({
             whileHover={{ rotate: -8, scale: 1.06 }}
             transition={{ type: 'spring', stiffness: 400, damping: 15 }}
           >
-            CS
+            <img src="/logo.png" alt="" width={26} height={26} className="brand-logo-img" />
           </motion.span>
           <span>
             <span className="brand-title">CleanSheet</span>

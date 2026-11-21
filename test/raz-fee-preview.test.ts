@@ -92,6 +92,7 @@ test('POST /api/raz/fee-preview rejects unauthenticated and parent actors', asyn
     () => makeStore(),
     makeBillingStore,
     undefined,
+    undefined,
     async () => {
       throw new Error('Should not invoke Sarvam without coach auth');
     },
@@ -113,6 +114,7 @@ test('POST /api/raz/fee-preview returns preview for coach JSON input without wri
   const handler = createHandler(
     () => makeStore(() => { createdFees += 1; }),
     makeBillingStore,
+    undefined,
     undefined,
     async (input) => {
       assert.equal(input.locale, 'kn-IN');
@@ -160,6 +162,7 @@ test('POST /api/raz/fee-preview parses base64 multipart audio uploads and maps p
     () => makeStore(),
     makeBillingStore,
     undefined,
+    undefined,
     async (input) => {
       assert.ok(input.audioBuffer && input.audioBuffer.length === 4);
       assert.equal(input.locale, 'hi-IN');
@@ -180,6 +183,7 @@ test('POST /api/raz/fee-preview parses base64 multipart audio uploads and maps p
   const ambiguousHandler = createHandler(
     () => makeStore(),
     makeBillingStore,
+    undefined,
     undefined,
     async () => {
       throw new SarvamProviderError('INVALID_COMMAND', 'Please repeat the fee amount.', 400);
