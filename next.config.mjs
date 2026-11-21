@@ -7,7 +7,7 @@ const cspDirectives = [
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: blob: https://*.googleusercontent.com",
-  "connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://sandbox.cashfree.com https://api.cashfree.com",
+  `connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://*.cloudfunctions.net https://*.run.app https://sandbox.cashfree.com https://api.cashfree.com${isProd ? '' : ' http://127.0.0.1:* http://localhost:*'}`,
   "frame-src 'self' https://*.firebaseapp.com https://sandbox.cashfree.com",
   "object-src 'none'",
   "base-uri 'none'",
@@ -43,6 +43,13 @@ const nextConfig = {
   typescript: {
     tsconfigPath: './tsconfig.web.json',
   },
+  webpack: (config) => {
+    config.resolve.extensionAlias = {
+      ...config.resolve.extensionAlias,
+      '.js': ['.ts', '.tsx', '.js'],
+    };
+    return config;
+  },
   async headers() {
     return [
       {
@@ -50,6 +57,16 @@ const nextConfig = {
         headers: securityHeaders,
       },
     ];
+  },
+  async rewrites() {
+    const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, '');
+    const rules = apiBase
+      ? [{ source: '/api/:path*', destination: `${apiBase}/api/:path*` }]
+      : [];
+    return {
+      beforeFiles: rules,
+      fallback: rules,
+    };
   },
 };
 

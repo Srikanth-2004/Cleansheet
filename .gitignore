@@ -10,6 +10,12 @@ next-env.d.ts
 .DS_Store
 .env*
 !/.env.example
+!/functions/.env.example
+/functions/lib/
+.firebase/
+.secret.local
+/firebase-debug*.log
+/firestore-debug.log
 *.pem
 *.key
 *.p12

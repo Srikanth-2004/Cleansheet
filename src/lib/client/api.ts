@@ -39,12 +39,6 @@ import type {
   VerifyOrderData,
 } from './types';
 
-const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL ?? '').replace(/\/$/, '');
-
-function apiUrl(path: string): string {
-  return `${API_BASE}${path}`;
-}
-
 async function requestJson<T>(
   url: string,
   init: RequestInit = {},
@@ -68,7 +62,7 @@ async function requestJson<T>(
   }
 
   try {
-    const response = await fetch(apiUrl(url), { ...init, headers });
+    const response = await fetch(url, { ...init, headers });
     const contentType = response.headers.get('content-type') ?? '';
     if (!contentType.includes('application/json')) {
       return {

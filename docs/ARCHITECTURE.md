@@ -6,14 +6,16 @@ See the [sprint spec](SPEC.md), the active [Relay backend plan](BACKEND_RELAY.md
 
 ```mermaid
 flowchart LR
-    Parent["Linked parent"] -->|Consent and authenticated choice| App["CleanSheet backend"]
+    Parent["Linked parent"] -->|Consent and authenticated choice| App["Firebase API"]
     Coach["Coach"] -->|Review records and approve refunds| App
     App <-->|Verification reference| Secure["Cashfree Secure ID"]
     App -->|Authorise, schedule or cancel| Sub["Cashfree Subscriptions"]
     App -->|Checkout, recovery link or refund| PG["Cashfree Payment Gateway"]
-    Sub -->|Signed outcome| App
-    PG -->|Signed outcome| App
-    App <-->|Billing state and auditable actions| Store[("DynamoDB")]
+    Sub -->|Signed outcome| Adapter["Cashfree webhook adapter"]
+    PG -->|Signed outcome| Adapter
+    Adapter -->|Verified event and Google service identity| Events["Private billingEvents function"]
+    App <-->|Billing state and auditable actions| Store[("Firestore")]
+    Events -->|Project verified outcomes| Store
     App -->|Approved action via supported setup| Relay["Cashfree Relay with Sarvam voice"]
     Relay -->|Reminder or eligible retry| Parent
     Relay -->|Confirmed cancellation call| Coach
@@ -28,21 +30,21 @@ The Relay route and observed outcomes depend on merchant access. The backend own
 flowchart LR
     Coach["Coach UI"]
     Parent["Parent UI"]
-    Auth["Amazon Cognito"]
+    Auth["Firebase Auth"]
 
-    subgraph App["TypeScript Lambda Event function"]
+    subgraph App["Firebase HTTPS API"]
         Raz["Raz fee preview"]
         Fees["Fee creation and dashboard"]
         Payment["Checkout and payment verification"]
     end
 
     Sarvam["Sarvam speech-to-text and tool calling"]
-    DB[("DynamoDB: roles, fee records, payment state")]
+    DB[("Firestore: roles, fee records, payment state")]
     Cashfree["Cashfree Sandbox"]
 
     Coach -->|Sign in| Auth
     Parent -->|Sign in| Auth
-    Coach -->|Audio or text and ID token| Raz
+    Coach -->|Local Next.js forwards audio or text and Firebase ID token| Raz
     Raz <-->|Transcription and fee proposal| Sarvam
     Raz -->|Fee preview| Coach
     Coach -->|Confirm fee| Fees
@@ -70,7 +72,7 @@ flowchart TD
     Start --> UI["Frontend · CS-05 build both screens with fixtures"]
     Start --> Voice["Sarvam · CS-04 test Raz with a sample clip"]
 
-    Base -->|Merge base| Store["CS-02 · Cognito access and seeded fee state"]
+    Base -->|Merge base| Store["CS-02 · Firebase Auth and seeded fee state"]
     Store --> Smoke["1:30 PM target · Verify one deployed sandbox checkout"]
     Pay --> Smoke
     UI -->|Checkout screen| Smoke

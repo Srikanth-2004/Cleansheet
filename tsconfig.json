@@ -11,6 +11,7 @@
   "include": ["src/**/*.ts", "scripts/**/*.ts", "test/**/*.ts"],
   "exclude": [
     "node_modules",
+    "functions/**",
     "src/app/**",
     "src/components/**",
     "src/lib/client/**",

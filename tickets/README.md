@@ -4,8 +4,8 @@ Start with the [Relay backend plan](../docs/BACKEND_RELAY.md), [Relay integratio
 
 | Ticket | Suggested owner | Start independently with | Needed for live completion | Initial status |
 |---|---|---|---|---|
-| [CS-01 · Scaffold and deploy](CS-01-scaffold-and-deploy.md) | Backend | Minimal permitted scaffold | Repo and AWS account and deployment access | READY |
-| [CS-02 · Cognito and fee state](CS-02-auth-and-fee-state.md) | Backend after CS-01 | AWS stack, test identities, and written contract | CS-01 merge base and host | READY |
+| [CS-01 · Scaffold and deploy](CS-01-scaffold-and-deploy.md) | Backend | Minimal permitted scaffold | Repo and Firebase deployment access | READY |
+| [CS-02 · Firebase Auth and fee state](CS-02-auth-and-fee-state.md) | Backend after CS-01 | Firebase project, test identities, and written contract | CS-01 merge base and host | READY |
 | [CS-03 · Cashfree checkout](CS-03-cashfree-checkout.md) | Cashfree | Cashfree Sandbox and fake fee store | CS-01 host, CS-02 store, CS-05 checkout control | READY |
 | [CS-04 · Raz fee preview](CS-04-raz-fee-preview.md) | @jv-013 (Sarvam + Frontend) | Sarvam key and sample clip | CS-01 host, CS-02 auth, CS-05 recording or typed input | MERGEABLE |
 | [CS-05 · Coach and parent UI](CS-05-coach-and-parent-ui.md) | @jv-013 (Frontend) | Contract-shaped fixtures | CS-01 shell and real routes from CS-02, CS-03, and CS-04 | MERGEABLE |
@@ -23,8 +23,8 @@ Start with the [Relay backend plan](../docs/BACKEND_RELAY.md), [Relay integratio
 
 **Handoff.** Post `CS-## | owner | status | branch/PR/asset | check and observed result | blocker or next consumer`. Each owner updates their ticket. Backend coordinates release evidence, and the relevant builder owns any fix raised by QA.
 
-- `CS-04 | @jv-013 | MERGEABLE | branch: cs-05-coach-and-parent-ui | Sarvam saaras:v4 + sarvam-105b + MCP get_fee_summary wired in src/lib/providers/sarvam.ts & AWS Lambda (src/lambda.ts); smoke:sarvam & npm test passed | Blocker for VERIFIED: AWS deployment secret (SarvamSecretArn) & live spoken mic clip test`
-- `CS-05 | @jv-013 | MERGEABLE | branch: cs-05-coach-and-parent-ui | Architectural UI + Relay/SecureID/Refund screens + Next.js security hardening & firestore.rules; web:build & Chrome checks passed | Blocker for VERIFIED: deployed backend + live Cashfree checkout/verify routes`
+- `CS-04 | @jv-013 | MERGEABLE | PR #3 | Sarvam saaras:v4 + sarvam-105b + MCP get_fee_summary wired in functions/src/lib/providers/sarvam.ts & local routes | Live verification needs Sarvam secret & spoken mic clip`
+- `CS-05 | @jv-013 | MERGEABLE | PR #3 | Architectural telemetry UI + Relay/SecureID/Refund screens + Next.js security hardening & firestore.rules; web:build & Chrome checks passed | Blocker for VERIFIED: deployed Firebase Functions + live Cashfree checkout/verify routes`
 - `CS-06 | @jv-013 | CLAIMED | asset: deliverables/release/cs-06-video-timeline.md | 65s storyboard, captions & ffmpeg export template ready | Waiting on CS-08 verified deployed build`
 - `CS-07 | @jv-013 | CLAIMED | asset: deliverables/release/cs-07-pitch-deck.md | 4-slide pitch deck drafted | Waiting on CS-06 video & CS-08 release evidence`
 - `CS-10 | @jv-013 | MERGEABLE | asset: deliverables/release/cs-10-relay-outreach.md + src/lib/client/relay-scripts.ts | Bilingual hi-IN/kn-IN Relay voice scripts & consent-gated contract wired | Waiting on merchant Relay webhook/call credentials`

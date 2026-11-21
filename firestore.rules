@@ -237,6 +237,11 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Admin-SDK-only namespaced scenario documents used by Cloud Functions.
+    match /scenarios/{scenario}/{document=**} {
+      allow read, write: if false;
+    }
+
     // Actor identity profiles contain role mappings and parent PII.
     // Users may `get` only their own document; collection `list` is prohibited to prevent enumeration.
     // Client writes are disabled: actor provisioning and role assignment occur strictly server-side.

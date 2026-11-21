@@ -2,14 +2,14 @@
 
 For recurring charges, verification, and Relay actions, also use the [Relay integration contract](RELAY_CONTRACT.md).
 
-This is the implementation seam between the UI, DynamoDB store, Raz, and Cashfree. Builders can work from these shapes before adjacent code lands. [CS-02](../tickets/CS-02-auth-and-fee-state.md) materialises the shared types and validators in `src/contracts/`.
+This is the implementation seam between the UI, Firestore store, Raz, and Cashfree. Builders can work from these shapes before adjacent code lands. [CS-02](../tickets/CS-02-auth-and-fee-state.md) materialises the shared types and validators in `functions/src/contracts/`.
 
 ## Common values
 
-- Every listed route is protected. Send `Authorization: Bearer <Cognito access token>`. The server verifies the token and resolves access from seeded records.
+- Every listed route is protected. Send `Authorization: Bearer <Firebase ID token>`. The server verifies the token and resolves access from seeded records.
 - JSON success is `{ok:true,data:…}`. JSON failure is `{ok:false,error:{code,message}}` with an appropriate HTTP status. Use `401` for missing or invalid credentials, `403` or `404` for inaccessible records, `400` for invalid input, and `409` for a conflicting fee amount.
 - `role` is `coach` or `parent`. `period` is `YYYY-MM`. `locale` is `hi-IN` or `kn-IN` for the chosen demo language. Amounts are positive safe integers in paise for fees and `currency` is `INR`. `status` and `feeStatus` are `unpaid`, `processing`, or `paid`.
-- Resolve academy, squad, player, and payable amount on the server. A fixture can provide these records locally; a deployed evidence run uses DynamoDB and provider responses.
+- Resolve academy, squad, player, and payable amount on the server. A fixture can provide these records locally; a deployed evidence run uses Firestore and provider responses.
 
 ## HTTP routes
 
@@ -29,12 +29,12 @@ The preview creates zero fee records. Ambiguous or invalid commands return a ret
 
 | Function from CS-02 | Used by | Behavior |
 |---|---|---|
-| `getActor(event, store, role?)` | CS-03, CS-04 | Use the API Gateway-verified Cognito access token and resolve `{uid, role}`. |
+| Authenticated actor resolution | CS-03, CS-04 | Verify the Firebase ID token with Firebase Admin and resolve the actor from the Firestore role record. The same coach check protects fee preview and fee confirmation. |
 | `reserveCheckout(uid, feeId)` | CS-03 | Check parent access and reserve or load a stable checkout order for an unpaid fee. Return `{feeId, orderId, amountPaise, currency, customer:{id, name, email, phone}}` from stored data. |
 | `getCheckout(uid, orderId)` | CS-03 | Return the authorised stored checkout record by order ID. |
-| `applyVerifiedPayment(orderId, providerPaymentId)` | CS-03 | Atomically apply the trusted payment once and return `{feeId, feeStatus}`. Repeated application keeps totals unchanged. |
+| `applyVerifiedPayment(orderId, providerPaymentId, amountPaise)` | CS-03 | Atomically apply the trusted payment once and return `{feeId, feeStatus}`. Repeated application keeps totals unchanged. |
 
-CS-03 checks the expected sandbox order, amount, currency, and successful provider payment before calling `applyVerifiedPayment`. The browser return and a provider submission response may trigger verification. An unresolved provider result stays `processing`. Provider calls run outside DynamoDB transaction callbacks.
+CS-03 checks the expected sandbox order, amount, currency, and successful provider payment before calling `applyVerifiedPayment`. The browser return and a provider submission response may trigger verification. An unresolved provider result stays `processing`. Provider calls run outside Firestore transaction callbacks.
 
 ## Fixture handoff
 

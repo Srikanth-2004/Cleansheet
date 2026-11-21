@@ -15,10 +15,10 @@ The backend plan adds recurring fees with Cashfree Subscriptions, Secure ID for 
 
 [Frontend](roles/01-frontend.md) · [Backend](roles/02-backend.md) · [Cashfree](roles/03-cashfree.md) · [Sarvam / Relay](roles/04-sarvam.md)
 
-## AWS hosting
+## Firebase backend
 
-The TypeScript backend runs as an AWS Lambda Event function behind API Gateway. Cognito handles sign-in, and DynamoDB stores scoped fee and payment records. See the [AWS deployment and handoff guide](AWS_DEPLOY.md).
+The TypeScript backend runs on Firebase HTTPS Functions with Firebase Auth and Firestore. The existing Next.js frontend uses Firebase ID tokens to call it. See the [Firebase deploy and integration guide](FIREBASE_DEPLOY.md).
 
 ## Folder template
 
-`src/lambda.ts` handles HTTP requests, `src/components/` holds shared UI, `src/contracts/` holds shared types, and `src/lib/` holds client, server, and provider code. `scripts/` is for seed and smoke checks, and `deliverables/` is for release records. [CS-01](tickets/CS-01-scaffold-and-deploy.md) covers the backend scaffold.
+`functions/src/` holds the Firebase API, billing event gateway, Firestore store, and MCP tool. `src/app/`, `src/components/`, and `src/lib/client/` hold the Next.js frontend. `functions/scripts/` contains seed and emulator checks. `deliverables/` holds release records. [CS-01](tickets/CS-01-scaffold-and-deploy.md) covers the backend scaffold.
