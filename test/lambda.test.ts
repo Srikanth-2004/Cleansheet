@@ -48,6 +48,12 @@ test('the public health endpoint needs no store configuration', async () => {
   assert.equal(response.statusCode, 200);
 });
 
+test('the Lambda serves no root page or frontend assets', async () => {
+  const handler = fixture();
+  assert.equal((await handler(event('/'))).statusCode, 404);
+  assert.equal((await handler(event('/assets/app.js'))).statusCode, 404);
+});
+
 test('a coach sees the paid fee summary from scoped records', async () => {
   const response = await fixture()(event('/api/coach/summary', coach.uid));
   assert.equal(response.statusCode, 200);
@@ -72,6 +78,7 @@ test('an authenticated parent can record a cancellation while a coach cannot', a
   const billing: BillingStore = {
     readParentBilling: async () => ({ subscription: null, cycle: null, contactStatus: 'unverified', outreachConsent: 'withheld' }),
     recordOutreachConsent: async () => 'withheld',
+    applyVerifiedCancellation: async () => 'applied',
     recordParentDecision: async (actor, cycleId, decision) => {
       assert.equal(actor.uid, parent.uid);
       assert.equal(cycleId, 'cycle-01');

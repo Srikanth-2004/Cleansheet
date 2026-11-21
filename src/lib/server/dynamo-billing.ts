@@ -1,10 +1,16 @@
+import { createHash } from 'node:crypto';
 import { GetCommand, PutCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import type { Actor } from '../../contracts/billing.js';
 import type { BillingStore, ContactStatus, OutreachConsent, ParentBilling, ParentDecision } from '../../contracts/relay.js';
 import { documentClient, getStorageConfig } from './dynamo-store.js';
 import { HttpError } from './http.js';
 
-type Subscription = NonNullable<ParentBilling['subscription']> & { parentUid: string; currentCycleId?: string };
+type Subscription = NonNullable<ParentBilling['subscription']> & {
+  parentUid: string;
+  currentCycleId?: string;
+  providerSubscriptionId?: string;
+  coachUid?: string;
+};
 type Cycle = NonNullable<ParentBilling['cycle']> & { parentUid: string; playerId: string; cutoffAt: string; decision?: ParentDecision };
 
 export function createDynamoBillingStore(config = getStorageConfig(), db = documentClient): BillingStore {
@@ -31,7 +37,7 @@ export function createDynamoBillingStore(config = getStorageConfig(), db = docum
     async readParentBilling(actor) {
       const [subscription, contact, consent] = await Promise.all([
         getSubscription(actor),
-        read<{ status: ContactStatus }>(`CONTACT#${actor.uid}`),
+        read<{ status: ContactStatus; expiresAt: number }>(`CONTACT#${actor.uid}`),
         read<{ status: OutreachConsent }>(`CONSENT#${actor.uid}`),
       ]);
       const cycle = subscription && await getCycle(actor, subscription.currentCycleId);
@@ -41,7 +47,7 @@ export function createDynamoBillingStore(config = getStorageConfig(), db = docum
           id: cycle.id, period: cycle.period, amountPaise: cycle.amountPaise, dueAt: cycle.dueAt,
           status: cycle.status, recoveryUrl: cycle.status === 'recovery_available' ? cycle.recoveryUrl : null,
         } : null,
-        contactStatus: contact?.status ?? 'unverified',
+        contactStatus: contact?.status === 'pending' && contact.expiresAt <= Date.now() ? 'unverified' : contact?.status ?? 'unverified',
         outreachConsent: consent?.status ?? 'withheld',
       };
     },
@@ -115,6 +121,55 @@ export function createDynamoBillingStore(config = getStorageConfig(), db = docum
           return { cycleStatus: currentCycle.status, subscriptionStatus: currentSubscription.status };
         }
         throw new HttpError(409, 'DECISION_CONFLICT', 'Billing state changed. Refresh before trying again.');
+      }
+    },
+
+    async applyVerifiedCancellation(event) {
+      // The provider adapter must verify the signature and terminal Cashfree state before calling this seam.
+      if (!event.eventKey || !event.providerSubscriptionId || !Number.isFinite(Date.parse(event.observedAt))
+        || !['CANCELLED', 'CUSTOMER_CANCELLED'].includes(event.providerStatus)) {
+        throw new HttpError(400, 'INVALID_PROVIDER_EVENT', 'A verified terminal cancellation is required.');
+      }
+      const sk = `SUBSCRIPTION#${event.playerId}`;
+      const subscription = await read<Subscription>(sk);
+      if (!subscription || subscription.providerSubscriptionId !== event.providerSubscriptionId) {
+        throw new HttpError(409, 'SUBSCRIPTION_MISMATCH', 'The provider mandate does not match the stored subscription.');
+      }
+      if (subscription.status === 'cancelled') return 'already_applied';
+
+      const eventId = createHash('sha256').update(event.eventKey).digest('hex');
+      const actionId = `${subscription.id}:cancellation_coach_call`;
+      try {
+        await db.send(new TransactWriteCommand({ TransactItems: [
+          { Update: {
+            TableName: table, Key: key(sk),
+            UpdateExpression: 'SET #status = :cancelled, providerStatus = :providerStatus, cancelledAt = :time',
+            ConditionExpression: 'providerSubscriptionId = :providerId AND #status <> :cancelled',
+            ExpressionAttributeNames: { '#status': 'status' },
+            ExpressionAttributeValues: {
+              ':cancelled': 'cancelled', ':providerStatus': event.providerStatus, ':time': event.observedAt,
+              ':providerId': event.providerSubscriptionId,
+            },
+          } },
+          { Put: {
+            TableName: table, ConditionExpression: 'attribute_not_exists(pk)', Item: {
+              ...key(`PROVIDER_EVENT#SUB#${eventId}`), kind: 'subscription_cancelled', subscriptionId: subscription.id, observedAt: event.observedAt,
+            },
+          } },
+          { Put: {
+            TableName: table, ConditionExpression: 'attribute_not_exists(pk)', Item: {
+              ...key(`OUTREACH#${actionId}`), actionId, kind: 'cancellation_coach_call',
+              status: subscription.coachUid ? 'needs_approval' : 'blocked',
+              subscriptionId: subscription.id, targetRef: subscription.coachUid, runAfter: event.observedAt,
+            },
+          } },
+        ] }));
+        return 'applied';
+      } catch (error) {
+        if (!(error instanceof Error) || error.name !== 'TransactionCanceledException') throw error;
+        const current = await read<Subscription>(sk);
+        if (current?.status === 'cancelled' && current.providerSubscriptionId === event.providerSubscriptionId) return 'already_applied';
+        throw error;
       }
     },
   };

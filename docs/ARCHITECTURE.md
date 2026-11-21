@@ -30,7 +30,7 @@ flowchart LR
     Parent["Parent UI"]
     Auth["Amazon Cognito"]
 
-    subgraph App["TypeScript on AWS Lambda"]
+    subgraph App["TypeScript Lambda Event function"]
         Raz["Raz fee preview"]
         Fees["Fee creation and dashboard"]
         Payment["Checkout and payment verification"]

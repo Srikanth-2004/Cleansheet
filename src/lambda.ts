@@ -1,20 +1,18 @@
-import { readFile } from 'node:fs/promises';
-import { extname, join } from 'node:path';
 import type { APIGatewayProxyEventV2WithJWTAuthorizer as Event, APIGatewayProxyStructuredResultV2 as Response } from 'aws-lambda';
 import { isPeriod, summariseFee, type FeeStore } from './contracts/billing.js';
 import type { BillingStore } from './contracts/relay.js';
 import { getActor } from './lib/server/auth.js';
+import { createContactVerification } from './lib/server/contact-verification.js';
 import { createDynamoBillingStore } from './lib/server/dynamo-billing.js';
 import { createDynamoFeeStore } from './lib/server/dynamo-store.js';
 import { HttpError, json, parseObject, success } from './lib/server/http.js';
 
-const contentTypes: Record<string, string> = {
-  '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
-  '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png',
-  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.woff2': 'font/woff2',
-};
-
-async function handleApi(event: Event, store: FeeStore, makeBillingStore: () => BillingStore): Promise<Response> {
+async function handleApi(
+  event: Event,
+  store: FeeStore,
+  makeBillingStore: () => BillingStore,
+  makeContactVerification: typeof createContactVerification,
+): Promise<Response> {
   const path = `${event.requestContext.http.method} ${event.rawPath}`;
   const cycleDecision = /^POST \/api\/parent\/billing\/cycles\/([a-zA-Z0-9_-]{1,128})\/decision$/.exec(path);
   if (cycleDecision) {
@@ -47,10 +45,27 @@ async function handleApi(event: Event, store: FeeStore, makeBillingStore: () => 
       const actor = await getActor(event, store, 'parent');
       return success(await makeBillingStore().readParentBilling(actor));
     }
+    case 'POST /api/parent/contact/start': {
+      const actor = await getActor(event, store, 'parent');
+      const { phone, consentVersion } = parseObject(requestBody(event));
+      if (typeof phone !== 'string' || !isConsentVersion(consentVersion)) {
+        throw new HttpError(400, 'INVALID_CONTACT', 'A phone number and consent version are required.');
+      }
+      return success(await makeContactVerification().start(actor, phone, consentVersion));
+    }
+    case 'POST /api/parent/contact/verify': {
+      const actor = await getActor(event, store, 'parent');
+      const { challengeId, otp } = parseObject(requestBody(event));
+      if (typeof challengeId !== 'string' || !/^cs-[a-f0-9]{32}$/.test(challengeId)
+        || typeof otp !== 'string' || !/^\d{6}$/.test(otp)) {
+        throw new HttpError(400, 'INVALID_OTP_REQUEST', 'Provide the current challenge and six-digit OTP.');
+      }
+      return success(await makeContactVerification().verify(actor, challengeId, otp));
+    }
     case 'POST /api/parent/outreach-consent': {
       const actor = await getActor(event, store, 'parent');
       const { granted, consentVersion } = parseObject(requestBody(event));
-      if (typeof granted !== 'boolean' || typeof consentVersion !== 'string' || !/^[a-zA-Z0-9._-]{1,64}$/.test(consentVersion)) {
+      if (typeof granted !== 'boolean' || !isConsentVersion(consentVersion)) {
         throw new HttpError(400, 'INVALID_CONSENT', 'A consent choice and valid version are required.');
       }
       return success({ outreachConsent: await makeBillingStore().recordOutreachConsent(actor, granted, consentVersion) });
@@ -82,35 +97,20 @@ function readPeriod(period: unknown) {
   return period;
 }
 
-async function serveWeb(path: string): Promise<Response> {
-  const asset = path === '/' ? 'index.html' : path.slice(1);
-  const extension = extname(asset);
-  if (!contentTypes[extension] || (path !== '/' && !/^\/assets\/[\w.-]+$/.test(path))) {
-    throw new HttpError(404, 'ROUTE_NOT_FOUND', 'This route is not available.');
-  }
-  try {
-    const body = await readFile(join(__dirname, 'web', asset));
-    return {
-      statusCode: 200,
-      headers: { 'content-type': contentTypes[extension], 'x-content-type-options': 'nosniff', 'cache-control': 'no-cache' },
-      body: body.toString('base64'),
-      isBase64Encoded: true,
-    };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
-    throw new HttpError(404, 'ASSET_NOT_FOUND', 'The requested asset was not found.');
-  }
+function isConsentVersion(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-zA-Z0-9._-]{1,64}$/.test(value);
 }
 
-export function createHandler(makeStore = createDynamoFeeStore, makeBillingStore = createDynamoBillingStore) {
+export function createHandler(
+  makeStore = createDynamoFeeStore,
+  makeBillingStore = createDynamoBillingStore,
+  makeContactVerification = createContactVerification,
+) {
   return async (event: Event): Promise<Response> => {
     try {
       const { method } = event.requestContext.http;
       if (method === 'GET' && event.rawPath === '/health') return success({ service: 'cleansheet' });
-      if (method === 'GET' && (event.rawPath === '/' || event.rawPath.startsWith('/assets/'))) {
-        return await serveWeb(event.rawPath);
-      }
-      if (event.rawPath.startsWith('/api/')) return await handleApi(event, makeStore(), makeBillingStore);
+      if (event.rawPath.startsWith('/api/')) return await handleApi(event, makeStore(), makeBillingStore, makeContactVerification);
       throw new HttpError(404, 'ROUTE_NOT_FOUND', 'This route is not available.');
     } catch (error) {
       if (error instanceof HttpError) return json(error.status, { ok: false, error: { code: error.code, message: error.message } });

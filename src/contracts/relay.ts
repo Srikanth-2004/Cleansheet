@@ -7,6 +7,14 @@ export type ParentDecision = 'keep' | 'cancel_subscription';
 export type ContactStatus = 'unverified' | 'pending' | 'verified' | 'blocked';
 export type OutreachConsent = 'granted' | 'withheld';
 
+export interface VerifiedSubscriptionCancellation {
+  eventKey: string;
+  playerId: string;
+  providerSubscriptionId: string;
+  providerStatus: 'CANCELLED' | 'CUSTOMER_CANCELLED';
+  observedAt: string;
+}
+
 export interface ParentBilling {
   subscription: { id: string; status: SubscriptionStatus; nextDueAt: string | null } | null;
   cycle: { id: string; period: string; amountPaise: number; dueAt: string; status: CycleStatus; recoveryUrl: string | null } | null;
@@ -21,4 +29,5 @@ export interface BillingStore {
     cycleStatus: CycleStatus;
     subscriptionStatus: SubscriptionStatus;
   }>;
+  applyVerifiedCancellation(event: VerifiedSubscriptionCancellation): Promise<'applied' | 'already_applied'>;
 }

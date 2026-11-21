@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: CleanSheet TypeScript web app and API on AWS Lambda
+Description: CleanSheet TypeScript backend on AWS Lambda
 
 Parameters:
   ScenarioId:
@@ -13,6 +13,17 @@ Parameters:
   CognitoCallbackUrl:
     Type: String
     Default: http://localhost:3000/
+  FrontendOrigin:
+    Type: String
+    Default: ''
+  SecureIdSecretArn:
+    Type: String
+    Default: ''
+    Description: Optional Secrets Manager ARN with clientId and clientSecret for Cashfree Secure ID Sandbox.
+
+Conditions:
+  HasFrontendOrigin: !Not [!Equals [!Ref FrontendOrigin, '']]
+  HasSecureIdSecret: !Not [!Equals [!Ref SecureIdSecretArn, '']]
 
 Resources:
   DemoTable:
@@ -56,6 +67,12 @@ Resources:
     Type: AWS::Serverless::HttpApi
     Properties:
       StageName: '$default'
+      CorsConfiguration: !If
+        - HasFrontendOrigin
+        - AllowOrigins: [!Ref FrontendOrigin]
+          AllowMethods: [GET, POST, OPTIONS]
+          AllowHeaders: [authorization, content-type]
+        - !Ref AWS::NoValue
       Auth:
         Authorizers:
           Cognito:
@@ -70,25 +87,21 @@ Resources:
     Properties:
       Runtime: nodejs22.x
       Handler: lambda.handler
-      CodeUri: dist/
+      CodeUri: dist/api/
       MemorySize: 256
       Timeout: 15
       Environment:
         Variables:
           CLEANSHEET_DYNAMODB_TABLE: !Ref DemoTable
           CLEANSHEET_SCENARIO_ID: !Ref ScenarioId
+          CASHFREE_SECURE_ID_CLIENT_ID: !If [HasSecureIdSecret, !Sub '{{resolve:secretsmanager:${SecureIdSecretArn}:SecretString:clientId}}', '']
+          CASHFREE_SECURE_ID_CLIENT_SECRET: !If [HasSecureIdSecret, !Sub '{{resolve:secretsmanager:${SecureIdSecretArn}:SecretString:clientSecret}}', '']
       Policies:
         - Statement:
             - Effect: Allow
               Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:PutItem, dynamodb:UpdateItem, dynamodb:ConditionCheckItem]
               Resource: !GetAtt DemoTable.Arn
       Events:
-        Root:
-          Type: HttpApi
-          Properties: { ApiId: !Ref HttpApi, Path: '/', Method: GET }
-        Assets:
-          Type: HttpApi
-          Properties: { ApiId: !Ref HttpApi, Path: '/assets/{proxy+}', Method: GET }
         Health:
           Type: HttpApi
           Properties: { ApiId: !Ref HttpApi, Path: '/health', Method: GET }
@@ -102,7 +115,7 @@ Resources:
               Authorizer: Cognito
 
 Outputs:
-  AppUrl:
+  ApiUrl:
     Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/'
   DynamoTable:
     Value: !Ref DemoTable

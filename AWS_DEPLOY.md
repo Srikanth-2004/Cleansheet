@@ -1,6 +1,6 @@
-# AWS Lambda backend and app hosting
+# AWS Lambda backend
 
-The TypeScript Lambda serves both the browser bundle in `web/` and JSON routes behind API Gateway. Cognito signs in test users, and DynamoDB stores their role, linked fee, checkout reservation, payment and coach notification. The SAM template provisions these resources together. Frontend can replace `web/index.html` and supply browser JS, CSS, and media under `web/assets/`. Compile browser TypeScript before copying the output into `web/`.
+The TypeScript API runs as an AWS Lambda **Event function** on Node.js 22.x behind API Gateway. Cognito signs in test users, and DynamoDB stores roles, linked fees, checkout reservations, payments and coach notifications. The SAM template packages the `lambda.handler` entry point in `dist/api/`.
 
 ## Run and deploy
 
@@ -12,7 +12,9 @@ npm run build
 sam deploy --guided
 ```
 
-Use an authorised AWS profile and choose a unique `CognitoDomainPrefix`. For the first stack deployment, the default localhost callback satisfies client creation. Redeploy with `CognitoCallbackUrl` set to the exact `AppUrl` output before testing hosted sign-in. Use Cognito's authorization-code flow with PKCE at the app origin and send the **access token** to protected requests. The hosted API supports the public shell, assets and `/health`. There is no public data or webhook route in this backend slice.
+Use an authorised AWS profile and choose a unique `CognitoDomainPrefix`. `ApiUrl` is the backend endpoint. Set `CognitoCallbackUrl` to the exact callback supplied by the Frontend owner and `FrontendOrigin` to that team's HTTPS origin for CORS. For local callback testing, the template defaults to `http://localhost:3000/`. Cognito clients use authorization code with PKCE and send the **access token** to protected requests. The public endpoint is `/health`.
+
+For Secure ID, set `SecureIdSecretArn` to an approved Secrets Manager secret with `clientId` and `clientSecret` for Cashfree Secure ID Sandbox. The deployment identity needs read access to resolve the secret. `POST /api/parent/contact/start` sends an OTP only to the adult number already linked to the account. `POST /api/parent/contact/verify` confirms the active challenge. Tests use stubbed provider responses. Run sandbox verification with the event account before enabling outreach.
 
 Create the two approved test users in the Cognito pool and record their `sub` values. Set `CLEANSHEET_DYNAMODB_TABLE` from the stack output, `CLEANSHEET_SCENARIO_ID` to the deployed scenario, `CLEANSHEET_COACH_SUB`, `CLEANSHEET_PARENT_SUB`, and the approved sandbox `CLEANSHEET_TEST_PARENT_EMAIL` and `CLEANSHEET_TEST_PARENT_PHONE` in the local shell. Use the same region and AWS profile as the stack. Then run one of the following.
 

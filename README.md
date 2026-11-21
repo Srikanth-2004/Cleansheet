@@ -17,8 +17,8 @@ The backend plan adds recurring fees with Cashfree Subscriptions, Secure ID for 
 
 ## AWS hosting
 
-The app shell and API run in one TypeScript Lambda behind API Gateway. Cognito handles sign-in, and DynamoDB stores scoped fee and payment records. See the [AWS deployment and handoff guide](AWS_DEPLOY.md).
+The TypeScript backend runs as an AWS Lambda Event function behind API Gateway. Cognito handles sign-in, and DynamoDB stores scoped fee and payment records. See the [AWS deployment and handoff guide](AWS_DEPLOY.md).
 
 ## Folder template
 
-`web/` holds the compiled browser bundle, `src/lambda.ts` handles HTTP requests, `src/components/` holds shared UI, `src/contracts/` holds shared types, and `src/lib/` holds client, server, and provider code. `scripts/` is for seed and smoke checks, and `deliverables/` is for release records. [CS-01](tickets/CS-01-scaffold-and-deploy.md) covers the app scaffold.
+`src/lambda.ts` handles HTTP requests, `src/components/` holds shared UI, `src/contracts/` holds shared types, and `src/lib/` holds client, server, and provider code. `scripts/` is for seed and smoke checks, and `deliverables/` is for release records. [CS-01](tickets/CS-01-scaffold-and-deploy.md) covers the backend scaffold.
