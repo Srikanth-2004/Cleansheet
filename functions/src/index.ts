@@ -20,6 +20,7 @@ import { previewRazFee, recognizeCancellationAnswer } from './lib/server/raz-pre
 import { approveRelayAction, getRelayDashboardHandoff, recordRelayDashboardOutcome } from './lib/server/relay-handoff.js';
 import { runSubscriptionAction } from './lib/server/subscription-actions.js';
 import { logProviderBlocked, logRequest, observeRequest } from './lib/server/observability.js';
+import { SarvamProviderError, synthesizeBillingSpeech } from './lib/providers/sarvam.js';
 
 initializeApp();
 
@@ -124,9 +125,11 @@ export const api = onRequest({ region, invoker: 'public', cors: cors.length ? co
       const snapshot = await records.collection('cashfreeHits').orderBy('recordedAt', 'desc').limit(40).get();
       return success({ hits: snapshot.docs.map(document => document.data()) });
     }
-    const localPreview = localDemo && req.method === 'POST' && req.path === '/api/raz/fee-preview'
+    const localPreview = localDemo && req.method === 'POST'
+      && ['/api/raz/fee-preview', '/api/raz/payment-count-audio'].includes(req.path)
       && req.get('authorization') === 'Bearer fixture-coach-token';
-    const localAnswer = localDemo && req.method === 'POST' && req.path === '/api/parent/billing/cancellation-answer'
+    const localAnswer = localDemo && req.method === 'POST'
+      && ['/api/parent/billing/cancellation-answer', '/api/parent/billing/cancellation-prompt'].includes(req.path)
       && req.get('authorization') === 'Bearer fixture-parent-token';
     const webhook = /^\/api\/webhooks\/cashfree\/(pg|subscriptions)$/.exec(req.path);
     if (req.method === 'POST' && webhook) {
@@ -154,6 +157,15 @@ export const api = onRequest({ region, invoker: 'public', cors: cors.length ? co
       recognizeCancellationAnswer: request => recognizeCancellationAnswer(request, () => providerSecret(
         'CLEANSHEET_SARVAM_SECRET', 'SARVAM_NOT_CONFIGURED', 'Sarvam',
       )),
+      speakBillingText: async (text, locale) => {
+        const apiKey = await providerSecret('CLEANSHEET_SARVAM_SECRET', 'SARVAM_NOT_CONFIGURED', 'Sarvam');
+        try {
+          return await synthesizeBillingSpeech(text, locale, apiKey);
+        } catch (error) {
+          if (error instanceof SarvamProviderError) throw new HttpError(error.status, error.code, error.message);
+          throw error;
+        }
+      },
       verifyToken: localPreview ? async () => 'demo-coach' : localAnswer ? async () => 'demo-parent' : verifyToken,
     });
   }),

@@ -1,4 +1,5 @@
 import { isPeriod, type Actor, type FeeStore, type Role } from './contracts/billing.js';
+import { cancellationQuestions, isBillingVoiceLocale, paymentCountText, type BillingVoiceLocale } from './contracts/voice.js';
 import type { RefundStore } from './contracts/payment-events.js';
 import type { BillingStore } from './contracts/relay.js';
 import type { PaymentGateway } from './lib/server/cashfree-pg.js';
@@ -27,6 +28,7 @@ interface Services {
   approveOutreach(actor: Actor, actionId: string): Promise<unknown>;
   previewRazFee(request: ApiRequest, actor: Actor): Promise<RazReply>;
   recognizeCancellationAnswer(request: ApiRequest): Promise<{ answer: 'yes' | 'no' | 'unknown' }>;
+  speakBillingText(text: string, locale: BillingVoiceLocale): Promise<{ audioUrl: string }>;
   verifyToken(token: string): Promise<string>;
 }
 
@@ -99,6 +101,13 @@ export async function handleApi(request: ApiRequest, services: Services) {
   switch (path) {
     case 'POST /api/raz/fee-preview':
       return success(await services.previewRazFee(request, await actorFor('coach')));
+    case 'POST /api/raz/payment-count-audio': {
+      const actor = await actorFor('coach');
+      const { locale, period } = parseObject(request.body);
+      if (!isBillingVoiceLocale(locale)) throw new HttpError(400, 'INVALID_LOCALE', 'Choose English, Hindi, or Kannada.');
+      const { payments } = await getCoachPaidFeesViaMcp(actor, store, readPeriod(period));
+      return success(await services.speakBillingText(paymentCountText(locale, payments.length), locale));
+    }
     case 'GET /api/me': {
       const { role, academyName, teamName } = await actorFor();
       return success({ role, academyName, teamName });
@@ -127,6 +136,12 @@ export async function handleApi(request: ApiRequest, services: Services) {
     case 'POST /api/parent/billing/cancellation-answer':
       await actorFor('parent');
       return success(await services.recognizeCancellationAnswer(request));
+    case 'POST /api/parent/billing/cancellation-prompt': {
+      await actorFor('parent');
+      const { locale } = parseObject(request.body);
+      if (!isBillingVoiceLocale(locale)) throw new HttpError(400, 'INVALID_LOCALE', 'Choose English, Hindi, or Kannada.');
+      return success(await services.speakBillingText(cancellationQuestions[locale], locale));
+    }
     case 'POST /api/parent/contact/start': {
       const actor = await actorFor('parent');
       const { phone, consentVersion } = parseObject(request.body);

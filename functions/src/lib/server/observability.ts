@@ -13,7 +13,7 @@ const staticPaths = new Set([
   '/', '/health', '/api/me', '/api/raz/fee-preview', '/api/coach/summary', '/api/coach/fees', '/api/coach/payments',
   '/api/coach/billing/notifications', '/api/coach/refunds', '/api/parent/fees', '/api/parent/billing',
   '/api/parent/subscription/enrol', '/api/parent/contact/start', '/api/parent/contact/verify',
-  '/api/parent/billing/cancellation-answer',
+  '/api/parent/billing/cancellation-answer', '/api/parent/billing/cancellation-prompt', '/api/raz/payment-count-audio',
   '/api/local/cashfree-hits',
   '/api/parent/outreach-consent', '/api/webhooks/cashfree/pg', '/api/webhooks/cashfree/subscriptions',
   '/subscriptions/cycles',

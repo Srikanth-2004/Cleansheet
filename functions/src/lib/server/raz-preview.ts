@@ -1,11 +1,14 @@
 import type { PaidFee } from '../../contracts/billing.js';
+import { paymentCountText, type BillingVoiceLocale } from '../../contracts/voice.js';
 import { generateRazFeePreview, isSupportedLocale, isValidPeriod, SarvamProviderError, transcribeWithSaarasV4, type FeeSummaryContext, type RazPreviewResult } from '../providers/sarvam.js';
 import { HttpError, parseObject } from './http.js';
 
 const maxAudioBytes = 10 * 1024 * 1024;
 type VoiceRequest = { contentType?: string; rawBody?: Buffer; body?: unknown };
 
-export type RazReply = RazPreviewResult | { kind: 'payments'; transcript: string; answer: string; payments: PaidFee[] };
+export type RazReply = RazPreviewResult | {
+  kind: 'payments'; transcript: string; answer: string; payments: PaidFee[]; period: string; voiceLocale: BillingVoiceLocale;
+};
 
 export function isPaidFeeQuestion(text: string): boolean {
   const question = text.toLowerCase().normalize('NFKC');
@@ -15,17 +18,14 @@ export function isPaidFeeQuestion(text: string): boolean {
     || (/\b(kitne|kitni|kaun|kisne)\b/.test(question) && /\b(fees?|payment)\b/.test(question) && /\b(paid|pay|bhari|jama|di)\b/.test(question));
 }
 
-function answerPaidFeeQuestion(transcript: string, locale: string, payments: PaidFee[]): RazReply {
-  const count = payments.length;
+function answerPaidFeeQuestion(transcript: string, period: string, payments: PaidFee[]): RazReply {
   const names = payments.map(payment => payment.playerName).join(', ');
   const hindi = /\p{Script=Devanagari}/u.test(transcript) || /\b(kitne|kitni|kaun|kisne)\b/i.test(transcript);
   const kannada = /\p{Script=Kannada}/u.test(transcript);
-  const answer = hindi
-    ? count ? `इस महीने ${count} खिलाड़ियों ने फीस भरी है। भुगतान करने वाले: ${names}।` : 'इस महीने किसी खिलाड़ी की फीस का भुगतान दर्ज नहीं है।'
-    : kannada
-      ? count ? `ಈ ತಿಂಗಳು ${count} ಆಟಗಾರರು ಶುಲ್ಕ ಪಾವತಿಸಿದ್ದಾರೆ: ${names}.` : 'ಈ ತಿಂಗಳು ಯಾವುದೇ ಆಟಗಾರರ ಶುಲ್ಕ ಪಾವತಿ ದಾಖಲಾಗಿಲ್ಲ.'
-      : count ? `${new Intl.NumberFormat(locale).format(count)} ${count === 1 ? 'player has' : 'players have'} paid for this month: ${names}.` : 'No players have a verified fee payment for this month.';
-  return { kind: 'payments', transcript, answer, payments };
+  const voiceLocale = hindi ? 'hi-IN' : kannada ? 'kn-IN' : 'en-IN';
+  const count = paymentCountText(voiceLocale, payments.length);
+  const answer = names ? `${count} ${names}` : count;
+  return { kind: 'payments', transcript, answer, payments, period, voiceLocale };
 }
 
 export async function previewRazFee(
@@ -45,7 +45,7 @@ export async function previewRazFee(
       }, apiKey);
     }
     if (getPaidFees && isPaidFeeQuestion(transcript)) {
-      return answerPaidFeeQuestion(transcript, input.locale, (await getPaidFees(input.period)).payments);
+      return answerPaidFeeQuestion(transcript, input.period, (await getPaidFees(input.period)).payments);
     }
     apiKey ??= await getApiKey();
     const feeSummary = await getFeeSummary?.(input.period);

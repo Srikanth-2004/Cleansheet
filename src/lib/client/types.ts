@@ -81,6 +81,8 @@ export type RazPreviewData = RazFeeProposal | {
   kind: 'payments';
   transcript: string;
   answer: string;
+  period: string;
+  voiceLocale: 'en-IN' | Locale;
   payments: CoachPaidFee[];
 };
 

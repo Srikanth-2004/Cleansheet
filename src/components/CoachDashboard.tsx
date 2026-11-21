@@ -9,6 +9,7 @@ import {
   fetchCoachPayments,
   fetchCoachRefunds,
   fetchCoachSummary,
+  fetchPaymentCountAudio,
   previewRazFee,
 } from '@/lib/client/api';
 import {
@@ -58,6 +59,36 @@ interface CoachDashboardProps {
 const formatAnimatedRupees = (paise: number) =>
   formatPaise(paise % 100 === 0 ? paise : Math.round(paise / 100) * 100);
 
+type PaymentReply = Extract<RazPreviewData, { kind: 'payments' }>;
+
+function PaymentCountAudio({ reply }: { reply: PaymentReply }) {
+  const [status, setStatus] = useState<'idle' | 'loading' | 'unavailable'>('idle');
+  const [audioUrl, setAudioUrl] = useState<string>();
+  const request = useRef<AbortController | null>(null);
+  useEffect(() => () => request.current?.abort(), []);
+
+  async function listen() {
+    const controller = new AbortController();
+    request.current = controller;
+    setStatus('loading');
+    const result = await fetchPaymentCountAudio(reply.period, reply.voiceLocale, controller.signal);
+    if (controller.signal.aborted) return;
+    if (result.ok) setAudioUrl(result.data.audioUrl);
+    setStatus(result.ok ? 'idle' : 'unavailable');
+  }
+
+  return (
+    <div className="button-row">
+      {audioUrl
+        ? <audio src={audioUrl} controls autoPlay aria-label="Raz payment count" />
+        : <button type="button" className="btn btn-secondary" onClick={() => void listen()} disabled={status === 'loading'}>
+          {status === 'loading' ? 'Preparing voice…' : 'Listen to payment count'}
+        </button>}
+      {status === 'unavailable' && <p role="status">Sarvam voice is unavailable. The payment count is shown above.</p>}
+    </div>
+  );
+}
+
 export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDashboardProps) {
   const periodInputId = useId();
   const commandInputId = useId();
@@ -88,6 +119,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
 
   const [previewBusy, setPreviewBusy] = useState<boolean>(false);
   const [previewResult, setPreviewResult] = useState<RazFeeProposal | null>(null);
+  const [paymentReply, setPaymentReply] = useState<PaymentReply | null>(null);
   const [confirmBusy, setConfirmBusy] = useState<boolean>(false);
   const [confirmedFee, setConfirmedFee] = useState<CreateFeeData | null>(null);
   const [confirmBurstCount, setConfirmBurstCount] = useState<number>(0);
@@ -101,12 +133,14 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
 
   function showRazReply(reply: RazPreviewData, previewMessage: string) {
     if ('kind' in reply) {
+      setPaymentReply(reply);
       setPreviewResult(null);
       setPayments(reply.payments);
       setPaymentListError(false);
       setStatusMessage(reply.answer);
       return;
     }
+    setPaymentReply(null);
     setPreviewResult(reply);
     setStatusMessage(previewMessage);
   }
@@ -167,6 +201,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
   async function handleStartRecording() {
     setErrorMessage('');
     setStatusMessage('');
+    setPaymentReply(null);
     setConfirmedFee(null);
 
     try {
@@ -262,6 +297,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
   async function submitTypedCommand(fixtureOnly = false) {
     setErrorMessage('');
     setStatusMessage('');
+    setPaymentReply(null);
     setConfirmedFee(null);
     setPreviewBusy(true);
 
@@ -650,6 +686,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
           <div aria-live="polite" aria-atomic="true">
             <AnimatedAlert message={errorMessage} tone="error" role="alert" />
             {!errorMessage && <AnimatedAlert message={statusMessage} tone="success" role="status" />}
+            {!errorMessage && paymentReply && <PaymentCountAudio key={`${paymentReply.period}:${paymentReply.voiceLocale}:${paymentReply.answer}`} reply={paymentReply} />}
           </div>
         </SpotlightCard>
 

@@ -134,10 +134,14 @@ await request(paidList, 403, parent.token);
 const paymentQuestion = { text: 'कितने लोगों ने फीस भरी है?', locale: 'hi-IN', period };
 const hindiAnswer = await request('api/api/raz/fee-preview', 200, coach.token, paymentQuestion);
 assert.equal(hindiAnswer.kind, 'payments');
-assert.match(hindiAnswer.answer, /1 खिलाड़ियों.*Demo Player/);
+assert.match(hindiAnswer.answer, /एक खिलाड़ी.*Demo Player/);
 assert.equal(hindiAnswer.payments.length, 1);
 assert.deepEqual((await request('api/api/raz/fee-preview', 200, unrelatedCoach.token, paymentQuestion)).payments, []);
 await request('api/api/raz/fee-preview', 403, parent.token, paymentQuestion);
+await request('api/api/raz/payment-count-audio', 403, parent.token, { locale: 'hi-IN', period });
+await request('api/api/raz/payment-count-audio', 503, coach.token, { locale: 'hi-IN', period });
+await request('api/api/parent/billing/cancellation-prompt', 403, coach.token, { locale: 'kn-IN' });
+await request('api/api/parent/billing/cancellation-prompt', 503, parent.token, { locale: 'kn-IN' });
 
 const caseId = `refund-${suffix}`;
 const refundAmount = 20_000;

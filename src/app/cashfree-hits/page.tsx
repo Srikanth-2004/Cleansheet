@@ -59,6 +59,9 @@ export default function CashfreeHitsPage() {
                         <span className="mono">{hit.status ? `HTTP ${hit.status}` : hit.outcome === 'error' ? 'No HTTP response' : 'Skipped'}</span>
                       </div>
                       <p>{hit.usedFor ?? hit.reason}</p>
+                      {hit.reason === 'CASHFREE_NOT_CONFIGURED' && (
+                        <p className="field-hint">Firebase has no Cashfree Payment Gateway Sandbox credentials. Add them to <code>CLEANSHEET_CASHFREE_PG_SECRET_LOCAL</code> in <code>functions/.env.local</code> and restart the emulator. This attempt has no Cashfree response.</p>
+                      )}
                       {hit.route && <p className="mono">{hit.route}</p>}
                       {hit.responseSummary && Object.keys(hit.responseSummary).length > 0 && (
                         <pre className="mono" style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(hit.responseSummary, null, 2)}</pre>

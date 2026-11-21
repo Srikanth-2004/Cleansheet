@@ -1,4 +1,5 @@
 import { SarvamAI, SarvamAIClient } from 'sarvamai';
+import type { BillingVoiceLocale } from '../../contracts/voice.js';
 import { observeProvider } from '../server/observability.js';
 
 export type SupportedLocale = 'hi-IN' | 'kn-IN';
@@ -82,6 +83,40 @@ export function isSupportedLocale(value: unknown): value is SupportedLocale {
 
 export function isValidPeriod(value: unknown): value is string {
   return typeof value === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(value);
+}
+
+const conversationalSpeakers: Record<BillingVoiceLocale, string> = {
+  'en-IN': 'simran_en_customer',
+  'hi-IN': 'simran_hi_conversation',
+  'kn-IN': 'chaitra_kn_conversation',
+};
+
+export async function synthesizeBillingSpeech(
+  text: string, locale: BillingVoiceLocale, apiKey: string, request: typeof fetch = fetch,
+) {
+  try {
+    const response = await observeProvider('sarvam', 'bulbul:v4-flash.synthesize', () =>
+      request('https://api.sarvam.ai/text-to-speech', {
+        method: 'POST',
+        headers: { 'api-subscription-key': apiKey, 'content-type': 'application/json' },
+        redirect: 'error',
+        signal: AbortSignal.timeout(5_000),
+        body: JSON.stringify({
+          text, language_code: locale, model: 'bulbul:v4-flash', speaker: conversationalSpeakers[locale],
+          pace: 0.95, temperature: 0.5, output_audio_codec: 'mp3', enable_preprocessing: true,
+        }),
+      }),
+    );
+    if (!response.ok) throw new Error('Sarvam synthesis failed.');
+    const { audios } = await response.json() as { audios?: unknown };
+    const audio = Array.isArray(audios) ? audios[0] : undefined;
+    if (typeof audio !== 'string' || !audio || audio.length > 256_000 || !/^[A-Za-z0-9+/]+={0,2}$/.test(audio)) {
+      throw new Error('Sarvam returned invalid audio.');
+    }
+    return { audioUrl: `data:audio/mpeg;base64,${audio}` };
+  } catch {
+    throw new SarvamProviderError('SARVAM_TTS_UNAVAILABLE', 'Sarvam voice playback is temporarily unavailable.', 502);
+  }
 }
 
 export async function transcribeWithSaarasV4(input: {

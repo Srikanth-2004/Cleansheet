@@ -276,6 +276,18 @@ export function recognizeParentCancellationAnswer(audio: Blob, locale: 'en-IN' |
   );
 }
 
+export function fetchCancellationPrompt(locale: 'en-IN' | Locale) {
+  return requestJson<{ audioUrl: string }>('/api/parent/billing/cancellation-prompt', {
+    method: 'POST', body: JSON.stringify({ locale }),
+  }, isFixtureModeEnabled() ? 'fixture-parent-token' : undefined);
+}
+
+export function fetchPaymentCountAudio(period: string, locale: 'en-IN' | Locale, signal: AbortSignal) {
+  return requestJson<{ audioUrl: string }>('/api/raz/payment-count-audio', {
+    method: 'POST', body: JSON.stringify({ period, locale }), signal,
+  }, isFixtureModeEnabled() ? 'fixture-coach-token' : undefined);
+}
+
 export async function submitParentCycleDecision(
   cycleId: string,
   decision: ParentDecision,

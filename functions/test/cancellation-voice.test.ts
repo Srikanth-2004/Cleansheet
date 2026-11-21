@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { cancellationQuestions, type BillingVoiceLocale } from '../src/contracts/voice.js';
+import { synthesizeBillingSpeech } from '../src/lib/providers/sarvam.js';
 import { classifyCancellationAnswer, isPaidFeeQuestion, previewRazFee } from '../src/lib/server/raz-preview.js';
 
 test('cancellation voice recognizes only clear English, Hindi and Kannada answers', () => {
@@ -20,7 +22,31 @@ test('Hindi payment counts use the scoped ledger without requesting a model key'
     },
   );
   assert.ok('kind' in result);
-  assert.match(result.answer, /1 खिलाड़ियों.*Demo Player/);
+  assert.match(result.answer, /एक खिलाड़ी.*Demo Player/);
+  assert.equal(result.voiceLocale, 'hi-IN');
   assert.deepEqual(result.payments, payments);
   assert.equal(isPaidFeeQuestion('नवंबर के लिए 1500 की फीस तय करो'), false);
+});
+
+test('Bulbul selects a conversational speaker for each language and returns playable MP3 data', async () => {
+  const speakers = {
+    'en-IN': 'simran_en_customer', 'hi-IN': 'simran_hi_conversation', 'kn-IN': 'chaitra_kn_conversation',
+  } satisfies Record<BillingVoiceLocale, string>;
+  for (const locale of Object.keys(speakers) as BillingVoiceLocale[]) {
+    const text = cancellationQuestions[locale];
+    const response = await synthesizeBillingSpeech(text, locale, 'test-key', async (input, options) => {
+      assert.equal(input, 'https://api.sarvam.ai/text-to-speech');
+      assert.equal(new Headers(options?.headers).get('api-subscription-key'), 'test-key');
+      const payload = JSON.parse(String(options?.body));
+      assert.equal(payload.text, text);
+      assert.equal(payload.model, 'bulbul:v4-flash');
+      assert.equal(payload.language_code, locale);
+      assert.equal(payload.speaker, speakers[locale]);
+      assert.equal(payload.output_audio_codec, 'mp3');
+      return Response.json({ audios: ['SUQzBAAAAAAAFQ=='] });
+    });
+    assert.equal(response.audioUrl, 'data:audio/mpeg;base64,SUQzBAAAAAAAFQ==');
+  }
+  await assert.rejects(synthesizeBillingSpeech('Test', 'en-IN', 'test-key', async () => Response.json({}, { status: 403 })),
+    { code: 'SARVAM_TTS_UNAVAILABLE', status: 502 });
 });
