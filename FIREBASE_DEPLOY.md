@@ -25,6 +25,29 @@ firebase emulators:exec --project demo-cleansheet --only auth,firestore,function
 
 ## Deploy
 
+Spark supports the cloud demo Firestore database. Run Auth, Firestore and Functions locally for the complete demo on Spark. The emulator dataset is separate from the cloud records.
+
+### Run the app on Spark
+
+Seed the emulator snapshot using the command below if `.firebase/seeded` has yet to be created. Then start the emulator suite and run the frontend from a second terminal.
+
+```powershell
+npm --prefix functions run build
+firebase emulators:start --project demo-cleansheet --only auth,firestore,functions --import .firebase/seeded
+```
+
+```powershell
+$env:NEXT_PUBLIC_API_BASE_URL = "http://127.0.0.1:5001/demo-cleansheet/asia-south1/api"
+$env:NEXT_PUBLIC_FIREBASE_PROJECT_ID = "demo-cleansheet"
+$env:NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN = "demo-cleansheet.firebaseapp.com"
+$env:NEXT_PUBLIC_FIREBASE_API_KEY = "emulator-key"
+$env:NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL = "http://127.0.0.1:9099"
+$env:NEXT_PUBLIC_USE_FIXTURES = "false"
+npm run dev
+```
+
+### Deploy the HTTP functions to Firebase
+
 Sign into Firebase as a project member with deployment access. The project needs the Blaze plan, a default Firestore database, and an enabled Firebase Auth sign-in provider. Use the existing Firebase configuration in this folder.
 
 ```powershell
