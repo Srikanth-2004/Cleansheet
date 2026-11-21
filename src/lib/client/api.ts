@@ -20,18 +20,11 @@ import type {
   VerifyOrderData,
 } from './types';
 
-const API_BASE = (process.env.NEXT_PUBLIC_API_BASE_URL ?? '').replace(/\/$/, '');
-
-function apiUrl(path: string): string {
-  return `${API_BASE}${path}`;
-}
-
 async function requestJson<T>(
   url: string,
   init: RequestInit = {},
-  overrideToken?: string,
 ): Promise<ApiResponse<T>> {
-  const token = overrideToken ?? (await getCurrentIdToken());
+  const token = await getCurrentIdToken();
   if (!token) {
     return {
       ok: false,
@@ -49,7 +42,7 @@ async function requestJson<T>(
   }
 
   try {
-    const response = await fetch(apiUrl(url), { ...init, headers });
+    const response = await fetch(url, { ...init, headers });
     const contentType = response.headers.get('content-type') ?? '';
     if (!contentType.includes('application/json')) {
       return {
@@ -105,62 +98,26 @@ export async function previewRazFee(input: {
   text?: string;
   locale: Locale;
   period: string;
-  fixtureOnly?: boolean;
 }): Promise<ApiResponse<RazPreviewData>> {
-  const fixtureMode = isFixtureModeEnabled();
-  if (fixtureMode && input.fixtureOnly) {
-    return fixtureRazFeePreview(input);
+  if (isFixtureModeEnabled()) return fixtureRazFeePreview(input);
+  if (input.audio) {
+    const formData = new FormData();
+    const ext = input.mimeType?.includes('mp4')
+      ? 'mp4'
+      : input.mimeType?.includes('ogg')
+        ? 'ogg'
+        : input.mimeType?.includes('wav')
+          ? 'wav'
+          : 'webm';
+    formData.append('audio', input.audio, `raz-command.${ext}`);
+    formData.append('locale', input.locale);
+    formData.append('period', input.period);
+    return requestJson<RazPreviewData>('/api/raz/fee-preview', { method: 'POST', body: formData });
   }
-  const overrideToken = fixtureMode ? 'fixture-coach-token' : undefined;
-
-  const callLiveSarvam = async (): Promise<ApiResponse<RazPreviewData>> => {
-    if (input.audio) {
-      const formData = new FormData();
-      const ext = input.mimeType?.includes('mp4')
-        ? 'mp4'
-        : input.mimeType?.includes('ogg')
-          ? 'ogg'
-          : input.mimeType?.includes('wav')
-            ? 'wav'
-            : 'webm';
-      formData.append('audio', input.audio, `raz-command.${ext}`);
-      formData.append('locale', input.locale);
-      formData.append('period', input.period);
-      return requestJson<RazPreviewData>(
-        '/api/raz/fee-preview',
-        {
-          method: 'POST',
-          body: formData,
-        },
-        overrideToken,
-      );
-    }
-
-    return requestJson<RazPreviewData>(
-      '/api/raz/fee-preview',
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          text: input.text ?? '',
-          locale: input.locale,
-          period: input.period,
-        }),
-      },
-      overrideToken,
-    );
-  };
-
-  const liveResult = await callLiveSarvam();
-  if (
-    fixtureMode &&
-    !liveResult.ok &&
-    (liveResult.error.code === 'SARVAM_NOT_CONFIGURED' ||
-      liveResult.error.code === 'NETWORK_ERROR')
-  ) {
-    return fixtureRazFeePreview(input);
-  }
-
-  return liveResult;
+  return requestJson<RazPreviewData>('/api/raz/fee-preview', {
+    method: 'POST',
+    body: JSON.stringify({ text: input.text ?? '', locale: input.locale, period: input.period }),
+  });
 }
 
 export async function confirmCoachFee(input: {

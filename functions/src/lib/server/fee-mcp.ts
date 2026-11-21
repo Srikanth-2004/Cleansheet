@@ -1,0 +1,56 @@
+import { Client, InMemoryTransport } from '@modelcontextprotocol/client';
+import { McpServer } from '@modelcontextprotocol/server';
+import * as z from 'zod/v4';
+import { billingPeriodPattern, summariseFee, type Actor, type FeeStore } from '../../contracts/billing.js';
+import { HttpError } from './http.js';
+
+export const FEE_SUMMARY_TOOL = 'get_fee_summary';
+const summarySchema = z.strictObject({
+  expectedPaise: z.int().nonnegative(),
+  collectedPaise: z.int().nonnegative(),
+  outstandingPaise: z.int().nonnegative(),
+  paidFeeCount: z.int().nonnegative(),
+});
+
+type FeeReader = Pick<FeeStore, 'findFee'>;
+type ToolClient = Pick<Client, 'listTools' | 'callTool'>;
+
+export async function withCoachFeeMcp<T>(actor: Actor, store: FeeReader, useTools: (client: ToolClient) => Promise<T>): Promise<T> {
+  if (actor.role !== 'coach') throw new HttpError(403, 'FORBIDDEN', 'Only a coach can read the fee summary.');
+  const playerId = actor.playerId;
+  const server = new McpServer({ name: 'cleansheet-fee-records', version: '1.0.0' });
+  server.registerTool(FEE_SUMMARY_TOOL, {
+    description: 'Read the signed-in coach’s expected, collected, and outstanding fees for one month. Amounts are in INR paise.',
+    inputSchema: z.strictObject({ period: z.string().regex(billingPeriodPattern, 'Use YYYY-MM.') }),
+    outputSchema: summarySchema,
+    annotations: { readOnlyHint: true, openWorldHint: false },
+  }, async ({ period }) => {
+    try {
+      const summary = summariseFee(await store.findFee(period, playerId));
+      return { structuredContent: summary, content: [{ type: 'text', text: JSON.stringify(summary) }] };
+    } catch {
+      return { isError: true, content: [{ type: 'text', text: 'The fee summary is temporarily unavailable.' }] };
+    }
+  });
+
+  const client = new Client({ name: 'cleansheet-backend', version: '1.0.0' });
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  try {
+    await server.connect(serverTransport);
+    await client.connect(clientTransport);
+    return await useTools(client);
+  } finally {
+    await Promise.allSettled([client.close(), server.close()]);
+  }
+}
+
+export async function getCoachFeeSummaryViaMcp(actor: Actor, store: FeeReader, period: string) {
+  return withCoachFeeMcp(actor, store, async client => {
+    const result = await client.callTool({ name: FEE_SUMMARY_TOOL, arguments: { period } });
+    const parsed = summarySchema.safeParse(result.structuredContent);
+    if (result.isError || !parsed.success) {
+      throw new HttpError(503, 'FEE_SUMMARY_UNAVAILABLE', 'The fee summary is temporarily unavailable.');
+    }
+    return parsed.data;
+  });
+}

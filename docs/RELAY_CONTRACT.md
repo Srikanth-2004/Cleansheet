@@ -19,11 +19,11 @@ This extends the [base contract](CONTRACT.md). It defines CleanSheet's interface
 
 `subscription` is `{id,status,nextDueAt}` or `null`. `cycle` is `{id,period,amountPaise,dueAt,status,recoveryUrl}` or `null`. The link is nullable and is available only to the scoped parent while eligible. `outreachConsent` is `granted` or `withheld`. `contactStatus` is `unverified`, `pending`, `verified`, or `blocked`. The signed-in parent’s verified contact and permission are required before dispatching parent outreach for the pilot.
 
-Use app subscription states `authorising`, `active`, `cancel_pending`, `cancelled`, and `needs_review`. Use cycle states `awaiting_decision`, `decision_recorded`, `charge_scheduled`, `processing`, `paid`, `failed`, `recovery_available`, `closed`, and `needs_review`. Where supported, keep provider webhooks and scheduled jobs separate from browser routes. Browser routes retain the Cognito access-token authentication and response envelope.
+Use app subscription states `authorising`, `active`, `cancel_pending`, `cancelled`, and `needs_review`. Use cycle states `awaiting_decision`, `decision_recorded`, `charge_scheduled`, `processing`, `paid`, `failed`, `recovery_available`, `closed`, and `needs_review`. Where supported, keep provider webhooks and scheduled jobs separate from browser routes. Browser routes retain the Firebase ID-token authentication and response envelope.
 
-## DynamoDB handoff
+## Firestore handoff
 
-All keys live in the selected demo partition. The Cashfree subscription integration should link a verified mandate under **SUBSCRIPTION#playerId** with fields **id**, **parentUid**, **status**, **nextDueAt**, and **currentCycleId**. The row also stores **providerSubscriptionId** from Cashfree and the scoped **coachUid**. The active **CYCLE#cycleId** stores **id**, **parentUid**, **playerId**, **period**, **amountPaise**, **dueAt**, **cutoffAt**, **status** and an optional approved **recoveryUrl**. Use ISO UTC timestamps and a route-safe cycle ID. Contact verification projects the result to **CONTACT#parentUid**. The consent route stores the separate outreach choice.
+All documents live under `scenarios/{scenario}`. The Cashfree subscription integration should link a verified mandate under `subscriptions/{playerId}` with fields **id**, **parentUid**, **status**, **nextDueAt**, and **currentCycleId**. The row also stores **providerSubscriptionId** from Cashfree and the scoped **coachUid**. The active `cycles/{cycleId}` stores **id**, **parentUid**, **playerId**, **period**, **amountPaise**, **dueAt**, **cutoffAt**, **status** and an optional approved **recoveryUrl**. Use ISO UTC timestamps and a route-safe cycle ID. Contact verification projects the result to `contacts/{parentUid}`. The consent route stores the separate outreach choice.
 
 Keep creates one **schedule_charge** intent and reserves the subscription collection path. The cycle remains in **decision_recorded** until a provider charge is scheduled. Cancel changes the mandate to **cancel_pending** and creates one **cancel_subscription** intent. The provider adapter or worker must claim the intent, read current state again, and reconcile the provider result. After authenticating and confirming **SUBSCRIPTION_STATUS_CHANGED** with **CANCELLED** or **CUSTOMER_CANCELLED**, the adapter calls the billing store cancellation projector. It checks the stored provider reference and records one approval-gated coach call intent. The payment-cancelled webhook is a separate event and does not cancel the subscription. Neither parent route calls a provider directly.
 
@@ -31,15 +31,15 @@ Keep creates one **schedule_charge** intent and reserves the subscription collec
 
 | Producer | Consumer | Shared shape |
 |---|---|---|
-| Cashfree adapters | Backend projector | Verified event with `{source, eventKey, kind, providerObjectId, relatedIds, amountPaise?, currency?, observedAt, providerStatus}`. Backend looks up trusted mappings. |
+| Cashfree adapters | Backend projector | POST a [normalized, typed event](../functions/src/events.ts) to the private `billingEvents` function after verification. Backend looks up trusted mappings. |
 | Backend | Cashfree adapters | Stored scope, approved amounts, stable client references, and verified current state for enrol, charge, cancel, recovery link and refund operations. Use one collection reservation per cycle. |
 | Backend | Relay / Sarvam | Approved action `{actionId, kind, merchantRef, cycleRef?, targetRef, language, runAfter}`. `kind` is `precharge_parent_call`, `recovery_parent_call_and_link` or `cancellation_coach_call`. Resolve delivery data server-side when dispatching. Refund reviews can create a case suggestion through the documented merchant workflow. |
 | Relay / Sarvam | Backend | `{actionId, providerActionId?, outcome, observedAt}` where outcome is `queued`, `delivered`, `failed`, `unknown`, or `blocked`. Implement an incoming route only when the vendor authentication, schema, and correlation are verified. A dashboard result may be logged with an auditable reference. |
-| Backend / MCP | Sarvam | `get_fee_summary(period)` accepts the month. Bind the verified coach in server context and return only authorised totals. See the [MCP handoff](../AWS_DEPLOY.md#coach-mcp-tool). |
+| Backend / MCP | Sarvam | `get_fee_summary(period)` accepts the month. Bind the verified coach in server context and return only authorised totals. See the [MCP handoff](../FIREBASE_DEPLOY.md#integration-handoff). |
 
 ## Backend handoff status
 
-The backend has subscription payment projection, consent-gated recovery intents, and scoped refund approval and reconciliation. See the [adapter and endpoint handoffs](../AWS_DEPLOY.md#billing-and-refund-handoffs). Cashfree still supplies verified events and sends provider refund requests in response to the recorded action. Relay still owns approved outreach and link delivery.
+The backend has subscription payment projection, consent-gated recovery intents, and scoped refund approval and reconciliation. See the [adapter and endpoint handoffs](../FIREBASE_DEPLOY.md#integration-handoff). Cashfree still supplies verified events and sends provider refund requests in response to the recorded action. Relay still owns approved outreach and link delivery.
 
 ## Fixture scenarios
 

@@ -204,7 +204,6 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
       mimeType: sampleBlob.type,
       locale,
       period,
-      fixtureOnly: true,
     });
     setPreviewBusy(false);
 

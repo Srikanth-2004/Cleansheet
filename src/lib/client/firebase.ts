@@ -1,6 +1,7 @@
 import { getApps, initializeApp, type FirebaseApp } from 'firebase/app';
 import {
   getAuth,
+  connectAuthEmulator,
   GoogleAuthProvider,
   onAuthStateChanged,
   signInWithPopup,
@@ -48,10 +49,12 @@ export function getFirebaseAuthClient(): Auth | null {
   }
 
   if (!cachedApp) {
-    cachedApp = getApps().length > 0 ? getApps()[0] : initializeApp(firebaseConfig);
+    cachedApp = getApps().find(app => app.name === 'cleansheet') ?? initializeApp(firebaseConfig, 'cleansheet');
   }
   if (!cachedAuth) {
     cachedAuth = getAuth(cachedApp);
+    const emulatorUrl = process.env.NEXT_PUBLIC_FIREBASE_AUTH_EMULATOR_URL;
+    if (process.env.NODE_ENV !== 'production' && emulatorUrl) connectAuthEmulator(cachedAuth, emulatorUrl);
   }
   return cachedAuth;
 }
@@ -76,6 +79,7 @@ export async function signOutUser(): Promise<void> {
 
 export async function getCurrentIdToken(forceRefresh = false): Promise<string | null> {
   const auth = getFirebaseAuthClient();
+  await auth?.authStateReady();
   const user = auth?.currentUser;
   if (!user) {
     return null;

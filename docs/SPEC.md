@@ -16,8 +16,8 @@ The [Relay backend plan](BACKEND_RELAY.md) sets the current scope for subscripti
 
 | Area | Sprint scope |
 |---|---|
-| App | A TypeScript Lambda Event function exposes the backend API through API Gateway. A coach dashboard, a parent fee page, and a sign-in entry point. English labels, one rehearsed desktop browser, responsive layout for both roles. |
-| Identity and storage | Cognito hosted sign-in and DynamoDB. Seed one academy, one squad, one invented player, one authorised coach, and one linked parent per scenario. Keep business writes behind server routes. |
+| App | A TypeScript Firebase HTTPS function exposes the backend API. A coach dashboard, a parent fee page, and a sign-in entry point. English labels, one rehearsed desktop browser, responsive layout for both roles. |
+| Identity and storage | Firebase Auth and Firestore. Seed one academy, one squad, one invented player, one authorised coach, and one linked parent per scenario. Keep business writes behind server routes. |
 | Raz | Sarvam `saaras:v4` transcription and `sarvam-105b` with one permitted fee-preview tool. Validate the proposal on the server. |
 | Payment | Cashfree PG Sandbox hosted checkout. Create an order for a stored fee, verify the provider on return or recheck, and apply success once. |
 | Release | Real sandbox transaction, verified deployed build, short demo recording, and a four-slide pitch if the briefing calls for one. |
@@ -34,7 +34,7 @@ Keep full academy onboarding, roster editing, parent invites and review, full lo
 
 | When | Evidence or decision |
 |---|---|
-| Before the timed sprint | Confirm repo and AWS access, Cognito sign-in and the API Gateway URL, test accounts, Sarvam access, and Cashfree Sandbox checkout and verification access. Use only preparation permitted by organisers. Test video export and confirm submission requirements. |
+| Before the timed sprint | Confirm repo and Firebase access, Firebase Auth sign-in and the HTTPS function URL, test accounts, Sarvam access, and Cashfree Sandbox checkout and verification access. Use only preparation permitted by organisers. Test video export and confirm submission requirements. |
 | 12:30 PM | Confirm scope and claim the starter tickets on the [board](../tickets/README.md). Backend publishes the scaffold, Frontend builds against fixtures, and Cashfree and Sarvam smoke-test their providers in parallel. |
 | 1:30 PM | Target one server-verified sandbox payment from the deployed smoke flow. Keep payment work on the critical path if this slips. |
 | 2:40 PM | Target the joined Raz → confirm → pay → dashboard flow in a fresh scenario. Use the typed Sarvam fallback if recording fails. |

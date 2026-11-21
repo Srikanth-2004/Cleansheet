@@ -1,6 +1,6 @@
 # Person 2 · Backend
 
-**Primary tickets** [CS-01 · Scaffold and deploy](../tickets/CS-01-scaffold-and-deploy.md), then [CS-02 · Cognito and fee state](../tickets/CS-02-auth-and-fee-state.md)
+**Primary tickets** [CS-01 · Scaffold and deploy](../tickets/CS-01-scaffold-and-deploy.md), then [CS-02 · Firebase Auth and fee state](../tickets/CS-02-auth-and-fee-state.md)
 
 **Release duty** [CS-08 · Integration and release QA](../tickets/CS-08-release-qa.md)
 
@@ -10,8 +10,8 @@ Own [CS-12 billing state and refunds](../tickets/CS-12-billing-state-and-refunds
 
 ## Start independently
 
-1. Publish the smallest buildable TypeScript Lambda scaffold and deploy it. Share the merge-base commit and host early so other builders can integrate without waiting for the data layer.
-2. Own root config, deployment, `src/contracts/`, the Cognito authorizer, the server store and seed, and identity/fee/summary routes. Follow the [contract](../docs/CONTRACT.md). Wire sign-in and access for the coach and linked parent, and seed distinct smoke and filming scenarios.
+1. Publish the smallest buildable TypeScript Firebase Functions scaffold and deploy it. Share the merge-base commit and host early so other builders can integrate without waiting for the data layer.
+2. Own root config, deployment, `functions/src/contracts/`, the Firebase ID-token verification, the server store and seed, and identity/fee/summary routes. Follow the [contract](../docs/CONTRACT.md). Wire sign-in and access for the coach and linked parent, and seed distinct smoke and filming scenarios.
 3. Implement the auth helper, checkout store seam, and atomic fee and payment writes. Keep the provider requests in the Cashfree and Sarvam owners' modules.
 
 ## Handoffs

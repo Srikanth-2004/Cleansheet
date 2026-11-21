@@ -4,9 +4,9 @@
 
 ## Work
 
-- Create one minimal TypeScript Lambda scaffold in the shared repo. Own the root config, lockfile, `.env.example`, and the AWS SAM deployment template. Publish the API scaffold early and give the endpoint and contract to CS-05.
-- Document the required configuration names for Cognito browser configuration, DynamoDB, Sarvam, and Cashfree Sandbox. Configure credentials through the intended host and keep secrets out of the repo.
-- Give builders the local start/build commands, merge-base commit, and the intended Lambda app URL. Coordinate the Cognito sign-in domain with CS-02 and checkout return URL with CS-03.
+- Create one minimal TypeScript Firebase Functions scaffold in the shared repo. Own the root config, lockfile, `.env.example`, and the Firebase project config. Publish the API scaffold early and give the endpoint and contract to CS-05.
+- Document the required configuration names for Firebase browser configuration, Firestore, Sarvam, and Cashfree Sandbox. Configure credentials through the intended host and keep secrets out of the repo.
+- Give builders the local start/build commands, merge-base commit, and the intended Firebase HTTPS function URL. Coordinate the Firebase Auth sign-in domain with CS-02 and checkout return URL with CS-03.
 
 ## Acceptance and handoff
 
