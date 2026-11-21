@@ -8,6 +8,6 @@ await build({
   bundle: true,
   platform: 'node',
   format: 'cjs',
-  target: 'node22',
+  target: 'node26',
 });
 await writeFile('dist/api/package.json', '{"type":"commonjs"}\n');

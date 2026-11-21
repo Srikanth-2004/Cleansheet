@@ -3,12 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22 <25" },
+  "engines": { "node": "26.x" },
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "tsx --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
-    "seed:demo": "tsx scripts/seed-demo.ts"
+    "seed:demo": "node --env-file-if-exists=.env --import tsx scripts/seed-demo.ts",
+    "config:check": "node --env-file-if-exists=.env scripts/check-config.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.900.0",
@@ -16,7 +17,7 @@
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.0",
-    "@types/node": "^22.0.0",
+    "@types/node": "^26.0.0",
     "esbuild": "^0.28.0",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0"

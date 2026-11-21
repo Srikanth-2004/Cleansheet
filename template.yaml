@@ -85,7 +85,7 @@ Resources:
   WebFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Runtime: nodejs22.x
+      Runtime: nodejs26.x
       Handler: lambda.handler
       CodeUri: dist/api/
       MemorySize: 256

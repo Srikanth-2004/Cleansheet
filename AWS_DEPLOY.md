@@ -1,10 +1,11 @@
 # AWS Lambda backend
 
-The TypeScript API runs as an AWS Lambda **Event function** on Node.js 22.x behind API Gateway. Cognito signs in test users, and DynamoDB stores roles, linked fees, checkout reservations, payments and coach notifications. The SAM template packages the `lambda.handler` entry point in `dist/api/`.
+The TypeScript API runs as an AWS Lambda **Event function** on Node.js 26 (`nodejs26.x`) behind API Gateway. Cognito signs in test users, and DynamoDB stores roles, linked fees, checkout reservations, payments and coach notifications. The SAM template packages the `lambda.handler` entry point in `dist/api/`. AWS lists Node.js 26 as a preview runtime for the sandbox sprint. [AWS Lambda runtimes](https://docs.aws.amazon.com/lambda/latest/dg/lambda-runtimes.html)
 
 ## Run and deploy
 
 ```sh
+node --version
 npm ci
 npm run typecheck
 npm test
@@ -12,13 +13,29 @@ npm run build
 sam deploy --guided
 ```
 
-Use an authorised AWS profile and choose a unique `CognitoDomainPrefix`. `ApiUrl` is the backend endpoint. Set `CognitoCallbackUrl` to the exact callback supplied by the Frontend owner and `FrontendOrigin` to that team's HTTPS origin for CORS. For local callback testing, the template defaults to `http://localhost:3000/`. Cognito clients use authorization code with PKCE and send the **access token** to protected requests. The public endpoint is `/health`.
+Use Node.js 26 locally and an authorised AWS profile for SAM. Choose a unique `CognitoDomainPrefix`. `ApiUrl` is the backend endpoint. Set `CognitoCallbackUrl` to the exact callback supplied by the Frontend owner and `FrontendOrigin` to that team's HTTPS origin for CORS. For local callback testing, the template defaults to `http://localhost:3000/`. Cognito clients use authorization code with PKCE and send the **access token** to protected requests. The public endpoint is `/health`.
 
 For Secure ID, set `SecureIdSecretArn` to an approved Secrets Manager secret with `clientId` and `clientSecret` for Cashfree Secure ID Sandbox. The deployment identity needs read access to resolve the secret. `POST /api/parent/contact/start` sends an OTP only to the adult number already linked to the account. `POST /api/parent/contact/verify` confirms the active challenge. Tests use stubbed provider responses. Run sandbox verification with the event account before enabling outreach.
 
-Create the two approved test users in the Cognito pool and record their `sub` values. Set `CLEANSHEET_DYNAMODB_TABLE` from the stack output, `CLEANSHEET_SCENARIO_ID` to the deployed scenario, `CLEANSHEET_COACH_SUB`, `CLEANSHEET_PARENT_SUB`, and the approved sandbox `CLEANSHEET_TEST_PARENT_EMAIL` and `CLEANSHEET_TEST_PARENT_PHONE` in the local shell. Use the same region and AWS profile as the stack. Then run one of the following.
+## Local `.env` and AWS resources
+
+Copy [`.env.example`](.env.example) to `.env` at the repository root. `npm run config:check -- seed` checks required names without printing their values. `seed:demo` loads `.env` automatically. Keep real `.env` files local. AWS SAM uses the AWS credentials available to its shell or configured profile.
+
+| Names | Value and use |
+|---|---|
+| `AWS_REGION`, `AWS_PROFILE` | Stack region and local deployment/seed profile. The template example uses `ap-south-1` as a starting value. `AWS_PROFILE` may be omitted for a configured default profile. |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | Optional temporary AWS session credentials for local commands if the event gives you a session instead of a profile. Lambda uses its execution role. |
+| `CLEANSHEET_DYNAMODB_TABLE`, `CLEANSHEET_SCENARIO_ID` | Deployed `DynamoTable` output and the selected scenario such as `smoke`. Both are required for the API and seed. |
+| `CLEANSHEET_COACH_SUB`, `CLEANSHEET_PARENT_SUB` | Distinct Cognito `sub` values for the approved test coach and parent. Used by seed. |
+| `CLEANSHEET_TEST_PARENT_EMAIL`, `CLEANSHEET_TEST_PARENT_PHONE` | Approved adult sandbox contact for Secure ID and the approved recovery demonstration. Used by seed. |
+| `CASHFREE_SECURE_ID_CLIENT_ID`, `CASHFREE_SECURE_ID_CLIENT_SECRET` | Secure ID Sandbox credentials for local contact endpoint validation. The deployed function reads the `clientId` and `clientSecret` keys from `SecureIdSecretArn` at stack deployment. |
+
+For a manual Lambda deployment, package only `dist/api/` with `lambda.js` at the ZIP root. Select x86_64, 256 MB and a 15-second timeout. Use a DynamoDB table with string partition key `pk` and sort key `sk`. The execution role needs CloudWatch Logs and `GetItem`, `Query`, `PutItem`, `UpdateItem` and `ConditionCheckItem` on that table. Connect an API Gateway HTTP API with payload format 2.0 and Cognito JWT auth on `/api/{proxy+}`. SAM creates these resources and routes.
+
+Create the two approved test users in the Cognito pool, populate the seed values, and choose a scenario.
 
 ```sh
+npm run config:check -- seed
 npm run seed:demo -- smoke 2026-11
 npm run seed:demo -- fresh 2026-11
 ```
