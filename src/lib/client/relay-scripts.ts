@@ -1,7 +1,6 @@
 export type RelayCallKind =
   | 'precharge_parent_call'
-  | 'recovery_parent_call_and_link'
-  | 'cancellation_coach_call';
+  | 'recovery_parent_call_and_link';
 
 export interface RelayCallScript {
   kind: RelayCallKind;
@@ -37,17 +36,5 @@ export const RELAY_CALL_SCRIPTS: ReadonlyArray<RelayCallScript> = [
       'ನಮಸ್ಕಾರ, ಫಸ್ಟ್ ಟಚ್ ಅಕಾಡೆಮಿಯ ನವೆಂಬರ್ 2026ರ ₹1,500 ಆಟೋ-ಡೆಬಿಟ್ ವಿಫಲವಾಗಿದೆ. ನಿಮ್ಮ CleanSheet ಖಾತೆಯಲ್ಲಿ ಸುರಕ್ಷಿತ Cashfree ರಿಕವರಿ ಲಿಂಕ್ ಲಭ್ಯವಿದೆ.',
     englishSummary:
       'Notifies parent of terminal debit failure and points to single reserved Cashfree recovery link.',
-  },
-  {
-    kind: 'cancellation_coach_call',
-    audience: 'coach',
-    title: 'Coach Mandate Cancellation Alert',
-    trigger: 'Verified Cashfree SUBSCRIPTION_STATUS_CHANGED (CANCELLED / CUSTOMER_CANCELLED)',
-    hindiScript:
-      'कोच अपडेट: डेमो प्लेयर के अभिभावक ने नवंबर 2026 का ऑटो-पे मैंडेट रद्द कर दिया है। कोई नया चार्ज नहीं लगेगा — कृपया CleanSheet में स्थिति देखें।',
-    kannadaScript:
-      'ಕೋಚ್ ಅಪ್‌ಡೇಟ್: ಡೆಮೊ ಪ್ಲೇಯರ್ ಪೋಷಕರು ನವೆಂಬರ್ 2026 ಆಟೋ-ಪೇ ಮ್ಯಾಂಡೇಟ್ ರದ್ದುಗೊಳಿಸಿದ್ದಾರೆ. ಯಾವುದೇ ಹೊಸ ಶುಲ್ಕ ಕಡಿತವಾಗುವುದಿಲ್ಲ.',
-    englishSummary:
-      'One idempotent Relay call alerting the coach that recurring collection stopped.',
   },
 ];

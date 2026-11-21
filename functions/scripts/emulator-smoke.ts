@@ -125,6 +125,10 @@ assert.deepEqual(await applyCashfreeWebhook(records, 'pg', {
 }), settled);
 assert.equal((await request('api/api/coach/billing/notifications', 200, coach.token)).notifications.length, 1);
 assert.equal((await request('api/api/coach/billing/notifications', 200, unrelatedCoach.token)).notifications.length, 0);
+const paidList = `api/api/coach/payments?period=${period}`;
+assert.equal((await request(paidList, 200, coach.token)).payments.find((item: { feeId: string }) => item.feeId === feeId)?.amountPaise, amountPaise);
+assert.deepEqual((await request(paidList, 200, unrelatedCoach.token)).payments, []);
+await request(paidList, 403, parent.token);
 
 const caseId = `refund-${suffix}`;
 const refundAmount = 20_000;
@@ -141,6 +145,7 @@ const refundEvent = {
 assert.equal((await request('billingEvents/', 200, undefined, refundEvent)).status, 'refunded');
 assert.equal((await request('billingEvents/', 200, undefined, refundEvent)).status, 'refunded');
 assert.equal((await request(summaryPath, 200, coach.token)).collectedPaise, amountPaise - refundAmount);
+assert.equal((await request(paidList, 200, coach.token)).payments[0].netPaise, amountPaise - refundAmount);
 
 const cyclePeriod = '2026-12';
 const dueAt = new Date(Date.now() + 3 * 86_400_000).toISOString();
@@ -209,12 +214,18 @@ await applyCashfreeWebhook(records, 'subscriptions', {
 assert.equal((await records.read<{ status: string }>('outreach', recoveryId))?.status, 'cancelled');
 const decisionPath = `api/api/parent/billing/cycles/${cycleId}/decision`;
 assert.equal((await request(decisionPath, 200, parent.token, { decision: 'cancel_subscription' })).subscriptionStatus, 'cancel_pending');
+const coachNotices = 'api/api/coach/billing/notifications';
+assert.equal((await request(coachNotices, 200, coach.token)).notifications.some((item: { kind: string }) => item.kind === 'subscription_cancelled'), false);
 await runSubscriptionAction(records, `${subscriptionId}:cancel`, subscriptions);
 const cancelEvent = {
   type: 'subscription.cancelled', eventKey: `cancel-${suffix}`, playerId, providerSubscriptionId, providerStatus: 'CANCELLED', observedAt,
 };
 assert.equal(await request('billingEvents/', 200, undefined, cancelEvent), 'already_applied');
-assert.equal((await records.read<{ status: string }>('outreach', `${subscriptionId}:cancellation_coach_call`))?.status, 'needs_approval');
+const cancellationNotices = (await request(coachNotices, 200, coach.token)).notifications.filter((item: { kind: string }) => item.kind === 'subscription_cancelled');
+assert.equal(cancellationNotices.length, 1);
+assert.equal(cancellationNotices[0].subjectLabel, 'Demo Player cancelled their subscription.');
+assert.equal((await request(coachNotices, 200, unrelatedCoach.token)).notifications.length, 0);
+assert.equal(await records.read('outreach', `${subscriptionId}:cancellation_coach_call`), undefined);
 
 const payoutId = `demo-payout-${suffix}`;
 const beneficiaryId = 'sandbox-beneficiary';

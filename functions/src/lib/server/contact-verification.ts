@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Actor } from '../../contracts/billing.js';
 import type { Records } from './firestore.js';
 import { HttpError } from './http.js';
+import { observeProvider } from './observability.js';
 
 const challengeMs = 5 * 60_000;
 const resendMs = 60_000;
@@ -35,14 +36,14 @@ export function createSecureIdSandboxProvider(config: { clientId: string; client
   async function post(path: 'send' | 'verify', body: object) {
     let response: Response;
     try {
-      response = await request(`https://sandbox.cashfree.com/verification/mobile360/otp/${path}`, {
+      response = await observeProvider('cashfree', `secure_id.otp_${path}`, () => request(`https://sandbox.cashfree.com/verification/mobile360/otp/${path}`, {
         method: 'POST', redirect: 'error', signal: AbortSignal.timeout(5_000),
         headers: {
           'content-type': 'application/json', 'x-api-version': '2024-12-01',
           'x-client-id': config.clientId, 'x-client-secret': config.clientSecret,
         },
         body: JSON.stringify(body),
-      });
+      }));
     } catch {
       throw new HttpError(502, 'SECURE_ID_UNAVAILABLE', 'Secure ID could not be reached.');
     }

@@ -5,6 +5,7 @@ import {
   fixtureCreateCheckout,
   fixtureEnrolSubscription,
   fixtureGetCoachSummary,
+  getFixtureState,
   fixtureGetMe,
   fixtureGetParentBilling,
   fixtureGetParentFees,
@@ -21,6 +22,7 @@ import type {
   ApiResponse,
   CheckoutSessionData,
   CoachNotificationsData,
+  CoachPaidFee,
   CoachRefundsData,
   CoachSummaryData,
   ContactStartData,
@@ -100,6 +102,16 @@ export async function fetchCoachSummary(period: string): Promise<ApiResponse<Coa
     `/api/coach/summary?period=${encodeURIComponent(period)}`,
     { method: 'GET' },
   );
+}
+
+export async function fetchCoachPayments(period: string): Promise<ApiResponse<{ payments: CoachPaidFee[] }>> {
+  if (isFixtureModeEnabled()) {
+    const payments = getFixtureState().fees
+      .filter(fee => fee.period === period && fee.status === 'paid')
+      .map(fee => ({ feeId: fee.id, playerName: fee.playerName, amountPaise: fee.amountPaise, netPaise: fee.amountPaise - (fee.refundedPaise ?? 0) }));
+    return { ok: true, data: { payments } };
+  }
+  return requestJson(`/api/coach/payments?period=${encodeURIComponent(period)}`, { method: 'GET' });
 }
 
 export async function fetchParentFees(period: string): Promise<ApiResponse<ParentFeesData>> {
@@ -260,6 +272,18 @@ export async function enrolSubscription(): Promise<ApiResponse<SubscriptionEnrol
   return requestJson<SubscriptionEnrolData>('/api/parent/subscription/enrol', {
     method: 'POST',
   });
+}
+
+export function recognizeParentCancellationAnswer(audio: Blob, locale: 'en-IN' | Locale) {
+  const formData = new FormData();
+  const extension = audio.type.includes('mp4') ? 'mp4' : audio.type.includes('ogg') ? 'ogg' : 'webm';
+  formData.append('audio', audio, `cancellation-answer.${extension}`);
+  formData.append('locale', locale);
+  return requestJson<{ answer: 'yes' | 'no' | 'unknown' }>(
+    '/api/parent/billing/cancellation-answer',
+    { method: 'POST', body: formData },
+    isFixtureModeEnabled() ? 'fixture-parent-token' : undefined,
+  );
 }
 
 export async function submitParentCycleDecision(

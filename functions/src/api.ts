@@ -3,7 +3,7 @@ import type { RefundStore } from './contracts/payment-events.js';
 import type { BillingStore } from './contracts/relay.js';
 import type { PaymentGateway } from './lib/server/cashfree-pg.js';
 import type { ContactVerification } from './lib/server/contact-verification.js';
-import { getCoachFeeSummaryViaMcp } from './lib/server/fee-mcp.js';
+import { getCoachFeeSummaryViaMcp, getCoachPaidFeesViaMcp } from './lib/server/fee-mcp.js';
 import { HttpError, parseObject, success } from './lib/server/http.js';
 
 export interface ApiRequest {
@@ -24,7 +24,8 @@ interface Services {
   getPaymentGateway(): Promise<PaymentGateway>;
   enrolSubscription(actor: Actor): Promise<unknown>;
   approveOutreach(actor: Actor, actionId: string): Promise<unknown>;
-  previewRazFee(request: ApiRequest): Promise<{ transcript: string; preview: { period: string; amountPaise: number } }>;
+  previewRazFee(request: ApiRequest, actor: Actor): Promise<{ transcript: string; preview: { period: string; amountPaise: number } }>;
+  recognizeCancellationAnswer(request: ApiRequest): Promise<{ answer: 'yes' | 'no' | 'unknown' }>;
   verifyToken(token: string): Promise<string>;
 }
 
@@ -96,8 +97,7 @@ export async function handleApi(request: ApiRequest, services: Services) {
   }
   switch (path) {
     case 'POST /api/raz/fee-preview':
-      await actorFor('coach');
-      return success(await services.previewRazFee(request));
+      return success(await services.previewRazFee(request, await actorFor('coach')));
     case 'GET /api/me': {
       const { role, academyName, teamName } = await actorFor();
       return success({ role, academyName, teamName });
@@ -107,6 +107,8 @@ export async function handleApi(request: ApiRequest, services: Services) {
       const period = readPeriod(request.period);
       return success(await getCoachFeeSummaryViaMcp(actor, store, period));
     }
+    case 'GET /api/coach/payments':
+      return success(await getCoachPaidFeesViaMcp(await actorFor('coach'), store, readPeriod(request.period)));
     case 'GET /api/parent/fees': {
       const actor = await actorFor('parent');
       const period = readPeriod(request.period);
@@ -121,6 +123,9 @@ export async function handleApi(request: ApiRequest, services: Services) {
     }
     case 'POST /api/parent/subscription/enrol':
       return success(await services.enrolSubscription(await actorFor('parent')));
+    case 'POST /api/parent/billing/cancellation-answer':
+      await actorFor('parent');
+      return success(await services.recognizeCancellationAnswer(request));
     case 'POST /api/parent/contact/start': {
       const actor = await actorFor('parent');
       const { phone, consentVersion } = parseObject(request.body);

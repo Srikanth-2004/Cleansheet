@@ -124,7 +124,8 @@ export interface OutreachConsentData {
 
 export interface SubscriptionEnrolData {
   subscriptionId: string;
-  mandateUrl: string;
+  mandateUrl: string | null;
+  subscriptionSessionId?: string | null;
   status: SubscriptionStatus;
 }
 
@@ -135,7 +136,7 @@ export interface CycleDecisionData {
 
 export interface CoachNotification {
   id: string;
-  kind: 'payment_succeeded' | 'subscription_cancelled' | 'refund_approved';
+  kind: 'payment_succeeded' | 'payment_completed' | 'subscription_cancelled' | 'refund_approved';
   occurredAt: string;
   subjectLabel: string;
   amountPaise?: number;
@@ -143,6 +144,13 @@ export interface CoachNotification {
 
 export interface CoachNotificationsData {
   notifications: CoachNotification[];
+}
+
+export interface CoachPaidFee {
+  feeId: string;
+  playerName: string;
+  amountPaise: number;
+  netPaise: number;
 }
 
 export interface RefundCaseView {

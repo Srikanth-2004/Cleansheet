@@ -93,6 +93,8 @@ npm run dev
 
 Open `http://localhost:3000`.
 
+See [Demo checks](docs/DEMO_TESTS.md) for payment, subscription, voice, and refund walkthroughs. The Firebase Emulator Logs page is `http://localhost:4000/logs`.
+
 ## Integration handoff
 
 - **Payment Gateway** uses stored fee amounts for checkout and reconciles signed successful payments at `POST <api-url>/api/webhooks/cashfree/pg`. Requests verify the signature over the raw body. Provider-confirmed amounts and references must match the stored order.

@@ -142,7 +142,7 @@ function createInitialState(
           id: 'notif-cancel-01',
           kind: 'subscription_cancelled',
           occurredAt: '2026-11-21T07:30:00Z',
-          subjectLabel: 'Demo Player (2026-11) mandate cancelled — coach Relay call queued',
+          subjectLabel: 'Demo Player (2026-11) cancelled their subscription.',
         },
       ],
       refunds: [],
@@ -862,24 +862,24 @@ export function fixtureRecordParentDecision(
   if (decision === 'cancel_subscription') {
     const updatedCycle = { ...state.billing.cycle, status: 'closed' as const };
     const updatedSub = state.billing.subscription
-      ? { ...state.billing.subscription, status: 'cancel_pending' as const }
+      ? { ...state.billing.subscription, status: 'cancelled' as const, nextDueAt: null }
       : null;
     const cancelNotif: CoachNotification = {
-      id: `notif-cancel-${Date.now()}`,
+      id: `notif-cancel-${cycleId}`,
       kind: 'subscription_cancelled',
       occurredAt: new Date().toISOString(),
-      subjectLabel: `${FIXTURE_PLAYER_NAME} (${updatedCycle.period}) mandate cancelled — coach call queued`,
+      subjectLabel: `${FIXTURE_PLAYER_NAME} (${updatedCycle.period}) cancelled their subscription.`,
     };
     saveFixtureState({
       ...state,
       billing: { ...state.billing, cycle: updatedCycle, subscription: updatedSub },
-      notifications: [cancelNotif, ...state.notifications],
+      notifications: [cancelNotif, ...state.notifications.filter(note => note.id !== cancelNotif.id)],
     });
     return {
       ok: true,
       data: {
         cycleStatus: updatedCycle.status,
-        subscriptionStatus: updatedSub?.status ?? 'cancel_pending',
+        subscriptionStatus: updatedSub?.status ?? 'cancelled',
       },
     };
   }

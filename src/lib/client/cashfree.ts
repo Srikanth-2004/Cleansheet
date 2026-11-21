@@ -5,6 +5,10 @@ interface CashfreeCheckoutInstance {
     paymentSessionId: string;
     redirectTarget?: '_self' | '_blank' | '_modal';
   }) => Promise<{ error?: { message?: string }; redirect?: boolean; paymentDetails?: unknown }>;
+  subscriptionsCheckout: (options: {
+    subsSessionId: string;
+    redirectTarget: '_self' | '_blank';
+  }) => Promise<{ error?: { message?: string } } | undefined>;
 }
 
 declare global {
@@ -65,4 +69,12 @@ export async function openCashfreeSandboxCheckout(paymentSessionId: string): Pro
   if (result?.error?.message) {
     throw new Error(result.error.message);
   }
+}
+
+export async function openCashfreeSandboxSubscription(subsSessionId: string): Promise<void> {
+  await loadCashfreeSdk();
+  if (!window.Cashfree) throw new Error('Cashfree SDK loaded without global constructor.');
+  const cashfree = window.Cashfree({ mode: 'sandbox' });
+  const result = await cashfree.subscriptionsCheckout({ subsSessionId, redirectTarget: '_self' });
+  if (result?.error?.message) throw new Error(result.error.message);
 }

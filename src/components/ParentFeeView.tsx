@@ -12,7 +12,7 @@ import {
   verifyContactOtp,
   verifyOrder,
 } from '@/lib/client/api';
-import { openCashfreeSandboxCheckout } from '@/lib/client/cashfree';
+import { openCashfreeSandboxCheckout, openCashfreeSandboxSubscription } from '@/lib/client/cashfree';
 import {
   FIXTURE_SANDBOX_OTP,
   setFixtureFeeStatusForTesting,
@@ -28,6 +28,7 @@ import {
   type ParentFee,
 } from '@/lib/client/types';
 import { ArrowIcon, RefreshIcon } from './icons';
+import { ParentCancellationPrompt } from './ParentCancellationPrompt';
 import {
   AnimatedAlert,
   AnimatedNumber,
@@ -80,6 +81,7 @@ export function ParentFeeView({
   const [otpInput, setOtpInput] = useState<string>('');
   const [contactBusy, setContactBusy] = useState<boolean>(false);
   const [billingBusy, setBillingBusy] = useState<boolean>(false);
+  const [showCancellation, setShowCancellation] = useState(false);
 
   const [activeCheckout, setActiveCheckout] = useState<{
     fee: ParentFee;
@@ -276,9 +278,15 @@ export function ParentFeeView({
     setBillingBusy(false);
 
     if (res.ok) {
-      setStatusMessage(
-        `Cashfree Mandate ${res.data.subscriptionId} (${res.data.status}) linked for ${period}.`,
-      );
+      if (!fixtureMode && res.data.subscriptionSessionId) {
+        try {
+          await openCashfreeSandboxSubscription(res.data.subscriptionSessionId);
+        } catch (error) {
+          setErrorMessage(error instanceof Error ? error.message : 'Unable to open Cashfree mandate checkout.');
+          return;
+        }
+      }
+      setStatusMessage(res.data.status === 'active' ? 'Subscription is active.' : 'Mandate is awaiting Cashfree authorization.');
       await loadParentWorkspace();
     } else {
       setErrorMessage(`${res.error.code}: ${res.error.message}`);
@@ -295,7 +303,9 @@ export function ParentFeeView({
     if (res.ok) {
       setStatusMessage(
         decision === 'cancel_subscription'
-          ? `Subscription cancelled (${res.data.subscriptionStatus}). Coach cancellation notice queued.`
+          ? res.data.subscriptionStatus === 'cancelled'
+            ? 'Subscription cancelled. The coach has been notified.'
+            : 'Cancellation requested. The coach will be notified once Cashfree confirms.'
           : `Cycle confirmed (${res.data.cycleStatus}). Recurring charge path reserved.`,
       );
       await loadParentWorkspace();
@@ -555,7 +565,6 @@ export function ParentFeeView({
           delay={0.14}
           aria-labelledby="secure-id-heading"
         >
-          <div className="panel-index mono">02 // SECURE ID &amp; OUTREACH CONSENT (CS-11)</div>
           <div className="preview-header">
             <h2 id="secure-id-heading" className="section-heading" style={{ margin: 0 }}>
               Adult Contact Verification
@@ -667,7 +676,6 @@ export function ParentFeeView({
           delay={0.18}
           aria-labelledby="mandate-heading"
         >
-          <div className="panel-index mono">03 // SUBSCRIPTION MANDATE &amp; RECOVERY (CS-09)</div>
           <div className="preview-header">
             <h2 id="mandate-heading" className="section-heading" style={{ margin: 0 }}>
               Monthly Auto-Pay Mandate
@@ -722,7 +730,7 @@ export function ParentFeeView({
                 </MagneticButton>
                 <MagneticButton
                   className="btn btn-terracotta"
-                  onClick={() => void handleCycleDecision('cancel_subscription')}
+                  onClick={() => setShowCancellation(true)}
                   disabled={
                     billingBusy ||
                     billing.subscription?.status === 'cancelled' ||
@@ -734,6 +742,16 @@ export function ParentFeeView({
               </>
             )}
           </div>
+
+          {showCancellation && (
+            <ParentCancellationPrompt
+              onKeep={() => setShowCancellation(false)}
+              onConfirm={() => {
+                setShowCancellation(false);
+                void handleCycleDecision('cancel_subscription');
+              }}
+            />
+          )}
 
           {billing?.cycle?.status === 'recovery_available' && billing.cycle.recoveryUrl && (
             <div className="alert alert-error" style={{ marginTop: '1rem' }}>

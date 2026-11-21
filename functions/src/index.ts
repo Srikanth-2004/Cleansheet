@@ -12,17 +12,20 @@ import { createCashfreeSubscriptions, enrolSubscription, prepareSubscriptionCycl
 import { applyCashfreeWebhook, verifiedCashfreeBody } from './lib/server/cashfree-webhooks.js';
 import { createContactVerification, createSecureIdSandboxProvider } from './lib/server/contact-verification.js';
 import { createFeeStore } from './lib/server/fee-store.js';
+import { getCoachFeeSummaryViaMcp } from './lib/server/fee-mcp.js';
 import { cleanSheetRecords } from './lib/server/firestore.js';
 import { HttpError, json, parseObject, success } from './lib/server/http.js';
 import { createRefundStore } from './lib/server/refund-store.js';
-import { previewRazFee } from './lib/server/raz-preview.js';
+import { previewRazFee, recognizeCancellationAnswer } from './lib/server/raz-preview.js';
 import { approveRelayAction, getRelayDashboardHandoff, recordRelayDashboardOutcome } from './lib/server/relay-handoff.js';
 import { runSubscriptionAction } from './lib/server/subscription-actions.js';
+import { logProviderBlocked, logRequest, observeRequest } from './lib/server/observability.js';
 
 initializeApp();
 
 const region = 'asia-south1';
 const cors = process.env.CLEANSHEET_CORS_ORIGINS?.split(',').map(origin => origin.trim()).filter(Boolean) ?? [];
+const localDemo = process.env.FUNCTIONS_EMULATOR === 'true' && process.env.GCLOUD_PROJECT === 'demo-cleansheet';
 
 async function verifyToken(token: string) {
   try {
@@ -38,8 +41,12 @@ async function verifyToken(token: string) {
 }
 
 async function providerSecret(variable: string, code: string, label: string) {
+  const provider = variable === 'CLEANSHEET_SARVAM_SECRET' ? 'sarvam' : 'cashfree';
+  const localSecret = localDemo ? process.env[`${variable}_LOCAL`]?.trim() : undefined;
+  if (localSecret) return localSecret;
   const secret = process.env[variable] ?? '';
   if (!/^projects\/[a-zA-Z0-9_-]+\/secrets\/[a-zA-Z0-9_-]+\/versions\/(latest|[1-9][0-9]*)$/.test(secret)) {
+    logProviderBlocked(provider, code);
     throw new HttpError(503, code, `${label} is not configured.`);
   }
   try {
@@ -55,6 +62,7 @@ async function providerSecret(variable: string, code: string, label: string) {
   } catch {
     // Do not include secret contents or upstream errors in the browser response.
   }
+  logProviderBlocked(provider, 'credentials_unavailable');
   throw new HttpError(503, code, `${label} credentials are unavailable.`);
 }
 
@@ -68,37 +76,53 @@ async function providerCredentials(variable: string, code: string, label: string
   } catch {
     // Keep misconfigured secret values out of the response.
   }
+  logProviderBlocked('cashfree', 'credentials_invalid');
   throw new HttpError(503, code, `${label} credentials are unavailable.`);
 }
 
 const pgCredentials = () => providerCredentials('CLEANSHEET_CASHFREE_PG_SECRET', 'CASHFREE_NOT_CONFIGURED', 'Cashfree Sandbox');
 const subscriptionCredentials = () => process.env.CLEANSHEET_CASHFREE_SUBSCRIPTIONS_SECRET
+  || (localDemo && process.env.CLEANSHEET_CASHFREE_SUBSCRIPTIONS_SECRET_LOCAL?.trim())
   ? providerCredentials('CLEANSHEET_CASHFREE_SUBSCRIPTIONS_SECRET', 'SUBSCRIPTION_NOT_CONFIGURED', 'Cashfree Subscriptions Sandbox')
   : pgCredentials();
 const subscriptions = async () => createCashfreeSubscriptions(await subscriptionCredentials(), process.env.CLEANSHEET_SUBSCRIPTION_PLAN_ID ?? '');
 
 type ResponseWriter = Parameters<Parameters<typeof onRequest>[0]>[1];
 
-async function respond(res: ResponseWriter, operation: () => Promise<ReturnType<typeof json>>) {
-  let result;
-  try {
-    result = await operation();
-  } catch (error) {
-    if (error instanceof HttpError) {
-      result = json(error.status, { ok: false, error: { code: error.code, message: error.message } });
-    } else {
-      console.error('CleanSheet request failed', { type: error instanceof Error ? error.name : 'unknown' });
-      result = json(500, { ok: false, error: { code: 'INTERNAL_ERROR', message: 'The request could not be completed.' } });
+function respond(
+  functionName: 'api' | 'billingEvents' | 'billingOperations', req: Request,
+  res: ResponseWriter, operation: () => Promise<ReturnType<typeof json>>,
+) {
+  return observeRequest(functionName, async requestId => {
+    const startedAt = performance.now();
+    let result;
+    let errorCode: string | undefined;
+    try {
+      result = await operation();
+    } catch (error) {
+      if (error instanceof HttpError) {
+        errorCode = error.code;
+        result = json(error.status, { ok: false, error: { code: errorCode, message: error.message } });
+      } else {
+        errorCode = 'INTERNAL_ERROR';
+        result = json(500, { ok: false, error: { code: errorCode, message: 'The request could not be completed.' } });
+      }
     }
-  }
-  res.set('Cache-Control', 'no-store').status(result.status).json(result.body);
+    logRequest(req.method, req.path, result.status, startedAt, errorCode);
+    res.set({ 'Cache-Control': 'no-store', 'X-Request-Id': requestId }).status(result.status).json(result.body);
+  });
 }
 
 export const api = onRequest({ region, invoker: 'public', cors: cors.length ? cors : false, maxInstances: 5 }, (req: Request, res) =>
-  respond(res, async () => {
+  respond('api', req, res, async () => {
     if (req.method === 'GET' && req.path === '/health') return success({ service: 'cleansheet' });
     if (!req.path.startsWith('/api/')) throw new HttpError(404, 'ROUTE_NOT_FOUND', 'This route is not available.');
     const records = cleanSheetRecords();
+    const fees = createFeeStore(records);
+    const localPreview = localDemo && req.method === 'POST' && req.path === '/api/raz/fee-preview'
+      && req.get('authorization') === 'Bearer fixture-coach-token';
+    const localAnswer = localDemo && req.method === 'POST' && req.path === '/api/parent/billing/cancellation-answer'
+      && req.get('authorization') === 'Bearer fixture-parent-token';
     const webhook = /^\/api\/webhooks\/cashfree\/(pg|subscriptions)$/.exec(req.path);
     if (req.method === 'POST' && webhook) {
       const product = webhook[1] === 'pg' ? 'pg' : 'subscriptions';
@@ -110,7 +134,7 @@ export const api = onRequest({ region, invoker: 'public', cors: cors.length ? co
       method: req.method, path: req.path, authorization: req.get('authorization'), period: req.query.period, body: req.body,
       contentType: req.get('content-type'), rawBody: req.rawBody,
     }, {
-      fees: createFeeStore(records),
+      fees,
       makeBillingStore: () => createBillingStore(records),
       makeContactVerification: async () => createContactVerification(records, createSecureIdSandboxProvider(
         await providerCredentials('CLEANSHEET_SECURE_ID_SECRET', 'SECURE_ID_UNAVAILABLE', 'Secure ID Sandbox'),
@@ -119,23 +143,26 @@ export const api = onRequest({ region, invoker: 'public', cors: cors.length ? co
       getPaymentGateway: async () => createCashfreeSandbox(await pgCredentials()),
       enrolSubscription: async actor => enrolSubscription(records, actor, await subscriptions()),
       approveOutreach: (actor, actionId) => approveRelayAction(records, actor, actionId),
-      previewRazFee: request => previewRazFee(request, () => providerSecret(
+      previewRazFee: (request, actor) => previewRazFee(request, () => providerSecret(
+        'CLEANSHEET_SARVAM_SECRET', 'SARVAM_NOT_CONFIGURED', 'Sarvam',
+      ), period => getCoachFeeSummaryViaMcp(actor, fees, period)),
+      recognizeCancellationAnswer: request => recognizeCancellationAnswer(request, () => providerSecret(
         'CLEANSHEET_SARVAM_SECRET', 'SARVAM_NOT_CONFIGURED', 'Sarvam',
       )),
-      verifyToken,
+      verifyToken: localPreview ? async () => 'demo-coach' : localAnswer ? async () => 'demo-parent' : verifyToken,
     });
   }),
 );
 
 export const billingEvents = onRequest({ region, invoker: 'private', maxInstances: 5 }, (req, res) =>
-  respond(res, async () => {
+  respond('billingEvents', req, res, async () => {
     if (req.method !== 'POST' || req.path !== '/') throw new HttpError(404, 'ROUTE_NOT_FOUND', 'This route is not available.');
     return success(await applyIntegrationEvent(cleanSheetRecords(), req.body));
   }),
 );
 
 export const billingOperations = onRequest({ region, invoker: 'private', maxInstances: 3 }, (req, res) =>
-  respond(res, async () => {
+  respond('billingOperations', req, res, async () => {
     if (req.method !== 'POST') throw new HttpError(404, 'ROUTE_NOT_FOUND', 'This route is not available.');
     const records = cleanSheetRecords();
     const subscriptionAction = /^\/subscriptions\/actions\/([a-zA-Z0-9_:-]{1,160})$/.exec(req.path);

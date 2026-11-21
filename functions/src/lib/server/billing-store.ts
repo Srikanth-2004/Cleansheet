@@ -10,6 +10,7 @@ type Subscription = NonNullable<ParentBilling['subscription']> & {
   currentCycleId?: string;
   providerSubscriptionId?: string;
   coachUid?: string;
+  cancelledAt?: string;
 };
 type Cycle = NonNullable<ParentBilling['cycle']> & {
   parentUid: string;
@@ -105,16 +106,26 @@ export function createBillingStore(records: Records): BillingStore {
         if (!subscription || subscription.providerSubscriptionId !== event.providerSubscriptionId) {
           throw new HttpError(409, 'SUBSCRIPTION_MISMATCH', 'The provider mandate does not match the stored subscription.');
         }
-        if (subscription.status === 'cancelled') return 'already_applied';
-        if (previous) throw new HttpError(409, 'EVENT_CONFLICT', 'The provider event is already associated with another cancellation.');
-        const actionId = `${subscription.id}:cancellation_coach_call`;
-        tx.update(ref('subscriptions', event.playerId), { status: 'cancelled', providerStatus: event.providerStatus, cancelledAt: event.observedAt });
-        tx.create(ref('providerEvents', eventId), { kind: 'subscription_cancelled', subscriptionId: subscription.id, observedAt: event.observedAt });
-        tx.create(ref('outreach', actionId), {
-          actionId, kind: 'cancellation_coach_call', status: subscription.coachUid ? 'needs_approval' : 'blocked',
-          subscriptionId: subscription.id, playerId: event.playerId, targetRef: subscription.coachUid ?? null, runAfter: event.observedAt,
-        });
-        return 'applied';
+        const alreadyCancelled = subscription.status === 'cancelled';
+        if (!alreadyCancelled && previous) throw new HttpError(409, 'EVENT_CONFLICT', 'The provider event is already associated with another cancellation.');
+        const id = `subscription-cancelled-${subscription.id}`;
+        const [notification, parent] = await Promise.all([
+          read('notifications', id, tx),
+          read<Actor>('actors', subscription.parentUid, tx),
+        ]);
+        if (!alreadyCancelled) {
+          tx.update(ref('subscriptions', event.playerId), { status: 'cancelled', nextDueAt: null, providerStatus: event.providerStatus, cancelledAt: event.observedAt });
+          tx.create(ref('providerEvents', eventId), { kind: 'subscription_cancelled', subscriptionId: subscription.id, observedAt: event.observedAt });
+        }
+        if (!notification) {
+          const playerName = parent?.playerId === event.playerId ? parent.playerName : 'Linked player';
+          tx.create(ref('notifications', id), {
+            id, kind: 'subscription_cancelled', subjectLabel: `${playerName} cancelled their subscription.`,
+            playerId: event.playerId, occurredAt: subscription.cancelledAt ?? event.observedAt,
+            ...(subscription.coachUid ? { coachUid: subscription.coachUid } : {}),
+          });
+        }
+        return alreadyCancelled ? 'already_applied' : 'applied';
       });
     },
   };

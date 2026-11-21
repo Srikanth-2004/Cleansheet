@@ -6,6 +6,7 @@ import {
   approveCoachRefund,
   confirmCoachFee,
   fetchCoachNotifications,
+  fetchCoachPayments,
   fetchCoachRefunds,
   fetchCoachSummary,
   previewRazFee,
@@ -18,6 +19,7 @@ import {
 import { RELAY_CALL_SCRIPTS } from '@/lib/client/relay-scripts';
 import {
   type CoachNotification,
+  type CoachPaidFee,
   type CoachSummaryData,
   type CreateFeeData,
   DEFAULT_DEMO_PERIOD,
@@ -71,6 +73,8 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
     paidFeeCount: 0,
   });
   const [notifications, setNotifications] = useState<CoachNotification[]>([]);
+  const [payments, setPayments] = useState<CoachPaidFee[]>([]);
+  const [paymentListError, setPaymentListError] = useState(false);
   const [refunds, setRefunds] = useState<RefundCaseView[]>([]);
   const [loadingSummary, setLoadingSummary] = useState<boolean>(true);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<string>('');
@@ -99,10 +103,11 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
 
   const loadCoachWorkspace = useCallback(async () => {
     setLoadingSummary(true);
-    const [sumRes, notifRes, refundRes] = await Promise.all([
+    const [sumRes, notifRes, refundRes, paymentsRes] = await Promise.all([
       fetchCoachSummary(period),
       fetchCoachNotifications(),
       fetchCoachRefunds(),
+      fetchCoachPayments(period),
     ]);
     setLoadingSummary(false);
 
@@ -120,6 +125,8 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
     if (refundRes.ok) {
       setRefunds(refundRes.data.refunds);
     }
+    setPayments(paymentsRes.ok ? paymentsRes.data.payments : []);
+    setPaymentListError(!paymentsRes.ok);
   }, [period]);
 
   useEffect(() => {
@@ -768,7 +775,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
         >
           <div className="panel-index mono">03 // SCOPED.REFUND.APPROVAL</div>
           <h2 id="refund-desk-heading" className="section-heading">
-            Refund Cases (CS-12)
+            Refund Cases
           </h2>
           <p className="section-caption">
             Approve bounded partial or full refunds on the original Cashfree rail without reopening
@@ -829,9 +836,20 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
             Coach Notifications &amp; Relay Feed
           </h2>
           <p className="section-caption">
-            Idempotent settlement notices, cancellation calls, and bilingual Sarvam × Relay voice
-            scripts.
+            Payment and cancellation notices, plus bilingual Relay voice scripts.
           </p>
+
+          <h3>Who paid</h3>
+          {paymentListError ? <p role="alert">Paid fees could not be loaded.</p> : payments.length > 0 ? (
+            <ul className="notif-list">
+              {payments.map(payment => (
+                <li key={payment.feeId} className="notif-item">
+                  <strong>{payment.playerName}</strong> · {formatPaise(payment.amountPaise)} paid
+                  {payment.netPaise < payment.amountPaise && ` · ${formatPaise(payment.netPaise)} after refunds`}
+                </li>
+              ))}
+            </ul>
+          ) : <p className="field-hint">No verified payments for this month.</p>}
 
           {notifications.length === 0 ? (
             <p className="field-hint">
@@ -843,7 +861,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
               {notifications.map((note) => (
                 <li key={note.id} className="notif-item">
                   <div className="notif-header">
-                    <span className="pill pill-teal mono">{note.kind}</span>
+                    <span className="pill pill-teal mono">{note.kind.replaceAll('_', ' ')}</span>
                     {typeof note.amountPaise === 'number' && (
                       <strong className="mono">{formatPaise(note.amountPaise)}</strong>
                     )}
@@ -858,7 +876,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
           )}
 
           <details className="relay-details">
-            <summary className="mono">View CS-10 Bilingual Relay Scripts ({RELAY_CALL_SCRIPTS.length})</summary>
+            <summary className="mono">View Bilingual Relay Scripts ({RELAY_CALL_SCRIPTS.length})</summary>
             <ul className="notif-list" style={{ marginTop: '0.75rem' }}>
               {RELAY_CALL_SCRIPTS.map((script) => (
                 <li key={script.kind} className="notif-item">

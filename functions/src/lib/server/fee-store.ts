@@ -40,10 +40,28 @@ export function createFeeStore(records: Records): FeeStore {
 
     async listNotifications(actor) {
       const snapshots = await collection('notifications').where('playerId', '==', actor.playerId).get();
-      return snapshots.docs.map(snapshot => {
-        const { id, kind, subjectLabel, amountPaise, occurredAt } = snapshot.data() as CoachNotification;
-        return { id, kind, subjectLabel, amountPaise, occurredAt };
-      }).sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
+      return snapshots.docs
+        .map(snapshot => snapshot.data() as CoachNotification & { coachUid?: string })
+        .filter(notification => !notification.coachUid || notification.coachUid === actor.uid)
+        .map(({ id, kind, subjectLabel, amountPaise, occurredAt }) => ({ id, kind, subjectLabel, amountPaise, occurredAt }))
+        .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt));
+    },
+
+    async listPaidFees(actor, period) {
+      if (actor.role !== 'coach') throw new HttpError(403, 'FORBIDDEN', 'Only a coach can view paid fees.');
+      const roster = Array.isArray(actor.coachPlayerIds) ? actor.coachPlayerIds : [];
+      const playerIds = [...new Set([actor.playerId, ...roster.filter(id => typeof id === 'string' && /^[a-zA-Z0-9_-]+$/.test(id))])];
+      const snapshots = await db.getAll(...playerIds.map(playerId => ref('fees', `${playerId}-${period}`)));
+      return snapshots
+        .flatMap((snapshot, index) => {
+          const fee = snapshot.data() as Fee | undefined;
+          if (fee?.status !== 'paid' || fee.playerId !== playerIds[index] || fee.period !== period) return [];
+          return [{
+            feeId: fee.id, playerName: fee.playerName,
+            amountPaise: fee.amountPaise, netPaise: fee.amountPaise - (fee.refundedPaise ?? 0),
+          }];
+        })
+        .sort((left, right) => left.playerName.localeCompare(right.playerName));
     },
 
     async reserveCheckout(uid, feeId) {

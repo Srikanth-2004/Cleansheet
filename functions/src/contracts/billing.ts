@@ -30,6 +30,7 @@ export interface Actor {
   playerName: string;
   academyName: string;
   teamName: string;
+  coachPlayerIds?: string[];
   customer?: Customer;
 }
 
@@ -43,10 +44,17 @@ export interface Checkout {
 
 export interface CoachNotification {
   id: string;
-  kind: 'payment_completed';
+  kind: 'payment_completed' | 'subscription_cancelled';
   subjectLabel: string;
-  amountPaise: number;
+  amountPaise?: number;
   occurredAt: string;
+}
+
+export interface PaidFee {
+  feeId: string;
+  playerName: string;
+  amountPaise: number;
+  netPaise: number;
 }
 
 export type ApiEnvelope<T> = { ok: true; data: T } | { ok: false; error: { code: string; message: string } };
@@ -56,6 +64,7 @@ export interface FeeStore {
   findFee(period: string, playerId: string): Promise<Fee | undefined>;
   createFee(actor: Actor, period: string, amountPaise: number): Promise<Fee>;
   listNotifications(actor: Actor): Promise<CoachNotification[]>;
+  listPaidFees(actor: Actor, period: string): Promise<PaidFee[]>;
   reserveCheckout(uid: string, feeId: string): Promise<Checkout>;
   getCheckout(uid: string, orderId: string): Promise<Checkout>;
   applyVerifiedPayment(orderId: string, providerPaymentId: string, amountPaise: number): Promise<{ feeId: string; feeStatus: 'paid' }>;

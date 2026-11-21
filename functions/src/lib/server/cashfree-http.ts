@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { HttpError } from './http.js';
+import { cashfreeOperation, observeProvider } from './observability.js';
 
 export interface CashfreeCredentials { clientId: string; clientSecret: string }
 
@@ -27,14 +28,14 @@ export function cashfreeSandboxRequest(
   return async <T>(path: string, body?: object, idempotencyId?: string): Promise<T> => {
     let response: Response | undefined;
     try {
-      response = await request(`https://sandbox.cashfree.com/${product}${path}`, {
+      response = await observeProvider('cashfree', cashfreeOperation(product, path, Boolean(body)), () => request(`https://sandbox.cashfree.com/${product}${path}`, {
         method: body ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(8_000),
         headers: {
           'Content-Type': 'application/json', 'x-api-version': apiVersion, 'x-client-id': clientId, 'x-client-secret': clientSecret,
           ...(idempotencyId ? { 'x-idempotency-key': cashfreeIdempotencyKey(idempotencyId) } : {}),
         },
         body: body && JSON.stringify(body),
-      });
+      }));
       if (response.ok) return await response.json() as T;
     } catch {
       // Keep upstream response and request details out of logs and client errors.

@@ -1,4 +1,5 @@
 import { SarvamAI, SarvamAIClient } from 'sarvamai';
+import { observeProvider } from '../server/observability.js';
 
 export type SupportedLocale = 'hi-IN' | 'kn-IN';
 
@@ -87,12 +88,12 @@ export async function transcribeWithSaarasV4(input: {
   audioBuffer: Buffer;
   fileName: string;
   mimeType: string;
-  locale: SupportedLocale;
+  locale: SupportedLocale | 'en-IN';
 }, apiKey?: string): Promise<string> {
   const client = getSarvamClient(apiKey);
 
   try {
-    const response = await client.speechToText.transcribe({
+    const response = await observeProvider('sarvam', 'saaras:v4.transcribe', () => client.speechToText.transcribe({
       file: {
         data: input.audioBuffer,
         filename: input.fileName,
@@ -100,7 +101,7 @@ export async function transcribeWithSaarasV4(input: {
       },
       model: 'saaras:v4',
       language_code: input.locale,
-    });
+    }));
 
     const transcript = response.transcript?.trim() ?? '';
     if (!transcript) {
@@ -161,7 +162,7 @@ export async function interpretFeeCommandWithSarvam105B(input: {
 
   let completion: SarvamAI.CreateChatCompletionResponse;
   try {
-    completion = await client.chat.completions({
+    completion = await observeProvider('sarvam', 'sarvam-105b.fee_preview', () => client.chat.completions({
       model: 'sarvam-105b',
       temperature: 0,
       reasoning_effort: 'low',
@@ -171,7 +172,7 @@ export async function interpretFeeCommandWithSarvam105B(input: {
       ],
       tools: [FEE_PREVIEW_TOOL],
       tool_choice: 'auto',
-    });
+    }));
   } catch (err) {
     const detail = err instanceof Error ? err.message : 'Sarvam tool-calling request failed.';
     throw new SarvamProviderError('SARVAM_LLM_ERROR', detail, 502);
