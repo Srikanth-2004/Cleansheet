@@ -18,7 +18,13 @@ This extends the [base contract](CONTRACT.md). It defines CleanSheet's interface
 
 `subscription` is `{id,status,nextDueAt}` or `null`. `cycle` is `{id,period,amountPaise,dueAt,status,recoveryUrl}` or `null`. The link is nullable and is available only to the scoped parent while eligible. `outreachConsent` is `granted` or `withheld`. `contactStatus` is `unverified`, `pending`, `verified`, or `blocked`. The signed-in parent’s verified contact and permission are required before dispatching parent outreach for the pilot.
 
-Use app subscription states `authorising`, `active`, `cancel_pending`, `cancelled`, and `needs_review`. Use cycle states `awaiting_decision`, `charge_scheduled`, `processing`, `paid`, `failed`, `recovery_available`, `closed`, and `needs_review`. Where supported, keep provider webhooks and scheduled jobs separate from browser routes. Browser routes retain the Cognito access-token authentication and response envelope.
+Use app subscription states `authorising`, `active`, `cancel_pending`, `cancelled`, and `needs_review`. Use cycle states `awaiting_decision`, `decision_recorded`, `charge_scheduled`, `processing`, `paid`, `failed`, `recovery_available`, `closed`, and `needs_review`. Where supported, keep provider webhooks and scheduled jobs separate from browser routes. Browser routes retain the Cognito access-token authentication and response envelope.
+
+## DynamoDB handoff
+
+All keys live in the selected demo partition. The Cashfree subscription integration should link a verified mandate under **SUBSCRIPTION#playerId** with fields **id**, **parentUid**, **status**, **nextDueAt**, and **currentCycleId**. The active **CYCLE#cycleId** stores **id**, **parentUid**, **playerId**, **period**, **amountPaise**, **dueAt**, **cutoffAt**, **status** and an optional approved **recoveryUrl**. Use ISO UTC timestamps and a route-safe cycle ID. Contact verification projects the result to **CONTACT#parentUid**. The consent route stores the separate outreach choice.
+
+Keep creates one **schedule_charge** intent and reserves the subscription collection path. The cycle remains in **decision_recorded** until a provider charge is scheduled. Cancel changes the mandate to **cancel_pending** and creates one **cancel_subscription** intent. The provider adapter or worker must claim the intent, read current state again, and reconcile the provider result. Verified cancellation is what authorises the coach call. Neither parent route calls a provider directly.
 
 ## Provider and agent handoffs
 

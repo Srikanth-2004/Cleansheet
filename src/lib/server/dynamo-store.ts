@@ -93,6 +93,8 @@ export function createDynamoFeeStore(
       const orderId = `cs-${digest(`${pk}:${feeId}`).slice(0, 30)}`;
       const existing = await readOrder(orderId);
       if (existing?.parentUid === uid) return checkoutView(existing);
+      const collectionKey = `COLLECTION#${feeId}`;
+      if (await read(collectionKey)) throw new HttpError(409, 'COLLECTION_IN_PROGRESS', 'A collection path is already active.');
       const order: OrderRecord = {
         feeId, orderId, amountPaise: fee.amountPaise,
         currency: fee.currency, customer: parent.customer, parentUid: uid,
@@ -107,11 +109,16 @@ export function createDynamoFeeStore(
             ExpressionAttributeValues: { ':processing': 'processing', ':paid': 'paid' },
           } },
           { Put: { TableName: table, Item: { ...key(`ORDER#${orderId}`), ...order }, ConditionExpression: 'attribute_not_exists(pk)' } },
+          { Put: {
+            TableName: table, Item: { ...key(collectionKey), rail: 'pg', reference: orderId },
+            ConditionExpression: 'attribute_not_exists(pk)',
+          } },
         ] }));
       } catch (error) {
         if (!isConditionalError(error)) throw error;
         const reserved = await readOrder(orderId);
         if (reserved?.parentUid === uid) return checkoutView(reserved);
+        if (await read(collectionKey)) throw new HttpError(409, 'COLLECTION_IN_PROGRESS', 'A collection path is already active.');
         if ((await read<Fee>(`FEE#${feeId}`))?.status === 'paid') {
           throw new HttpError(409, 'FEE_ALREADY_PAID', 'This fee is already paid.');
         }

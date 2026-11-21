@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { APIGatewayProxyEventV2WithJWTAuthorizer } from 'aws-lambda';
 import type { Actor, Fee, FeeStore } from '../src/contracts/billing.js';
+import type { BillingStore } from '../src/contracts/relay.js';
 import { createHandler } from '../src/lambda.js';
 
 const coach: Actor = {
@@ -27,7 +28,7 @@ function event(path: string, uid?: string, tokenUse = 'access'): APIGatewayProxy
   };
 }
 
-function fixture() {
+function fixture(billing?: BillingStore) {
   const unavailable = async () => { throw new Error('Unexpected store operation'); };
   const store: FeeStore = {
     findActor: async uid => uid === coach.uid ? coach : uid === parent.uid ? parent : undefined,
@@ -38,7 +39,7 @@ function fixture() {
     getCheckout: unavailable,
     applyVerifiedPayment: unavailable,
   };
-  return createHandler(() => store);
+  return createHandler(() => store, billing ? () => billing : undefined);
 }
 
 test('the public health endpoint needs no store configuration', async () => {
@@ -65,4 +66,28 @@ test('the parent fee response omits the private provider payment reference', asy
   const response = await fixture()(event('/api/parent/fees', parent.uid));
   assert.equal(response.statusCode, 200);
   assert.equal(JSON.parse(response.body ?? '').data.fees[0].providerPaymentId, undefined);
+});
+
+test('an authenticated parent can record a cancellation while a coach cannot', async () => {
+  const billing: BillingStore = {
+    readParentBilling: async () => ({ subscription: null, cycle: null, contactStatus: 'unverified', outreachConsent: 'withheld' }),
+    recordOutreachConsent: async () => 'withheld',
+    recordParentDecision: async (actor, cycleId, decision) => {
+      assert.equal(actor.uid, parent.uid);
+      assert.equal(cycleId, 'cycle-01');
+      assert.equal(decision, 'cancel_subscription');
+      return { cycleStatus: 'awaiting_decision', subscriptionStatus: 'cancel_pending' };
+    },
+  };
+  const handler = fixture(billing);
+  const request = (uid: string) => {
+    const requestEvent = event('/api/parent/billing/cycles/cycle-01/decision', uid);
+    requestEvent.requestContext.http.method = 'POST';
+    requestEvent.body = JSON.stringify({ decision: 'cancel_subscription' });
+    return requestEvent;
+  };
+  assert.equal((await handler(request(coach.uid))).statusCode, 403);
+  assert.deepEqual(JSON.parse((await handler(request(parent.uid))).body ?? ''), {
+    ok: true, data: { cycleStatus: 'awaiting_decision', subscriptionStatus: 'cancel_pending' },
+  });
 });

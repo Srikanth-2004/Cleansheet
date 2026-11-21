@@ -26,6 +26,7 @@ Run each seed against its own scenario ID. The transaction refuses to overwrite 
 ## Integration handoff
 
 - Frontend can use `GET /api/me`, `GET /api/parent/fees?period=YYYY-MM`, `GET /api/coach/summary?period=YYYY-MM`, `POST /api/coach/fees`, and `GET /api/coach/billing/notifications`.
+- Parent billing also exposes `GET /api/parent/billing`, `POST /api/parent/outreach-consent`, and `POST /api/parent/billing/cycles/[id]/decision`. Keep/cancel writes a durable intent and never submits a provider request by itself. The subscription integration must supply the scoped mandate and current cycle records before those choices can be exercised.
 - Cashfree can use `getActor(event, store, 'parent')` and `createDynamoFeeStore()` with `reserveCheckout`, `getCheckout` and `applyVerifiedPayment`. Verify provider order, payment status, amount, currency and sandbox environment before applying. A verified PG payment writes the ledger change and coach notification in one DynamoDB transaction.
 - Sarvam can use `getActor(event, store, 'coach')` and the scoped fee summary routine. Keep the model and Relay away from direct table credentials.
 - Add authenticated adapter paths to `src/lambda.ts` as they land. When signing checks and the event contract are in place, add specific API Gateway webhook routes with provider authentication. Use the Relay backend plan for subscriptions, cancellation, recovery, Secure ID and refunds.
