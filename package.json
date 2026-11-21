@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "engines": { "node": "26.x" },
+  "engines": {
+    "node": "26.x"
+  },
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "tsx --test test/*.test.ts",
@@ -13,7 +15,10 @@
   },
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.900.0",
-    "@aws-sdk/lib-dynamodb": "^3.900.0"
+    "@aws-sdk/lib-dynamodb": "^3.900.0",
+    "@modelcontextprotocol/client": "2.4.0",
+    "@modelcontextprotocol/server": "2.4.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/aws-lambda": "^8.10.0",

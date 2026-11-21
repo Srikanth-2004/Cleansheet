@@ -1,10 +1,11 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer as Event, APIGatewayProxyStructuredResultV2 as Response } from 'aws-lambda';
-import { isPeriod, summariseFee, type FeeStore } from './contracts/billing.js';
+import { isPeriod, type FeeStore } from './contracts/billing.js';
 import type { BillingStore } from './contracts/relay.js';
 import { getActor } from './lib/server/auth.js';
 import { createContactVerification } from './lib/server/contact-verification.js';
 import { createDynamoBillingStore } from './lib/server/dynamo-billing.js';
 import { createDynamoFeeStore } from './lib/server/dynamo-store.js';
+import { getCoachFeeSummaryViaMcp } from './lib/server/fee-mcp.js';
 import { HttpError, json, parseObject, success } from './lib/server/http.js';
 
 async function handleApi(
@@ -31,7 +32,7 @@ async function handleApi(
     case 'GET /api/coach/summary': {
       const actor = await getActor(event, store, 'coach');
       const period = readPeriod(event.queryStringParameters?.period);
-      return success(summariseFee(await store.findFee(period, actor.playerId)));
+      return success(await getCoachFeeSummaryViaMcp(actor, store, period));
     }
     case 'GET /api/parent/fees': {
       const actor = await getActor(event, store, 'parent');

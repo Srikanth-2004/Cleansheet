@@ -34,7 +34,7 @@ Keep creates one **schedule_charge** intent and reserves the subscription collec
 | Backend | Cashfree adapters | Stored scope, approved amounts, stable client references, and verified current state for enrol, charge, cancel, recovery link and refund operations. Use one collection reservation per cycle. |
 | Backend | Relay / Sarvam | Approved action `{actionId, kind, merchantRef, cycleRef?, targetRef, language, runAfter}`. `kind` is `precharge_parent_call`, `recovery_parent_call_and_link` or `cancellation_coach_call`. Resolve delivery data server-side when dispatching. Refund reviews can create a case suggestion through the documented merchant workflow. |
 | Relay / Sarvam | Backend | `{actionId, providerActionId?, outcome, observedAt}` where outcome is `queued`, `delivered`, `failed`, `unknown`, or `blocked`. Implement an incoming route only when the vendor authentication, schema, and correlation are verified. A dashboard result may be logged with an auditable reference. |
-| Backend / optional MCP | Sarvam | `get_fee_summary(period)` accepts the month. Bind the verified coach in server context and return only authorised totals. |
+| Backend / MCP | Sarvam | `get_fee_summary(period)` accepts the month. Bind the verified coach in server context and return only authorised totals. See the [MCP handoff](../AWS_DEPLOY.md#coach-mcp-tool). |
 
 ## Fixture scenarios
 
