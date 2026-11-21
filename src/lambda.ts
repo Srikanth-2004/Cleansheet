@@ -1,6 +1,11 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer as Event, APIGatewayProxyStructuredResultV2 as Response } from 'aws-lambda';
 import { isPeriod, type FeeStore } from './contracts/billing.js';
 import type { BillingStore } from './contracts/relay.js';
+import {
+  generateRazFeePreview,
+  isSupportedLocale,
+  SarvamProviderError,
+} from './lib/providers/sarvam.js';
 import { getActor } from './lib/server/auth.js';
 import { createContactVerification } from './lib/server/contact-verification.js';
 import { createDynamoBillingStore } from './lib/server/dynamo-billing.js';
@@ -13,6 +18,7 @@ async function handleApi(
   store: FeeStore,
   makeBillingStore: () => BillingStore,
   makeContactVerification: typeof createContactVerification,
+  makeRazPreview: typeof generateRazFeePreview,
 ): Promise<Response> {
   const path = `${event.requestContext.http.method} ${event.rawPath}`;
   const cycleDecision = /^POST \/api\/parent\/billing\/cycles\/([a-zA-Z0-9_-]{1,128})\/decision$/.exec(path);
@@ -71,6 +77,76 @@ async function handleApi(
       }
       return success({ outreachConsent: await makeBillingStore().recordOutreachConsent(actor, granted, consentVersion) });
     }
+    case 'POST /api/raz/fee-preview': {
+      await getActor(event, store, 'coach');
+      const contentType = readHeader(event.headers, 'content-type') ?? '';
+      if (contentType.toLowerCase().includes('multipart/form-data')) {
+        if (!event.body) {
+          throw new HttpError(400, 'MISSING_AUDIO', 'Audio upload body is required.');
+        }
+        const rawBody = event.isBase64Encoded
+          ? Buffer.from(event.body, 'base64')
+          : Buffer.from(event.body, 'utf8');
+        let formData: FormData;
+        try {
+          formData = await new Request('https://lambda.local/api/raz/fee-preview', {
+            method: 'POST',
+            headers: { 'content-type': contentType },
+            body: new Uint8Array(rawBody),
+          }).formData();
+        } catch {
+          throw new HttpError(400, 'INVALID_MULTIPART', 'Request body must be valid multipart form data.');
+        }
+        const audio = formData.get('audio');
+        const locale = formData.get('locale');
+        const period = formData.get('period');
+        if (!(audio instanceof Blob) || audio.size === 0) {
+          throw new HttpError(400, 'MISSING_AUDIO', 'Audio file is required in multipart upload.');
+        }
+        if (audio.size > 10 * 1024 * 1024) {
+          throw new HttpError(400, 'AUDIO_TOO_LARGE', 'Audio clip must be under 10 MB.');
+        }
+        if (!isSupportedLocale(locale)) {
+          throw new HttpError(400, 'INVALID_LOCALE', 'Locale must be hi-IN or kn-IN.');
+        }
+        const validPeriod = readPeriod(period);
+        const audioBuffer = Buffer.from(await audio.arrayBuffer());
+        const fileName = audio instanceof File && audio.name ? audio.name : 'raz-command.webm';
+        try {
+          return success(
+            await makeRazPreview({
+              audioBuffer,
+              fileName,
+              mimeType: audio.type || 'audio/webm',
+              locale,
+              period: validPeriod,
+            }),
+          );
+        } catch (error) {
+          if (error instanceof SarvamProviderError) {
+            throw new HttpError(error.status, error.code, error.message);
+          }
+          throw error;
+        }
+      }
+
+      const { text, locale, period } = parseObject(requestBody(event));
+      if (typeof text !== 'string' || !text.trim()) {
+        throw new HttpError(400, 'INVALID_COMMAND', 'Command text cannot be empty.');
+      }
+      if (!isSupportedLocale(locale)) {
+        throw new HttpError(400, 'INVALID_LOCALE', 'Locale must be hi-IN or kn-IN.');
+      }
+      const validPeriod = readPeriod(period);
+      try {
+        return success(await makeRazPreview({ text, locale, period: validPeriod }));
+      } catch (error) {
+        if (error instanceof SarvamProviderError) {
+          throw new HttpError(error.status, error.code, error.message);
+        }
+        throw error;
+      }
+    }
     case 'POST /api/coach/fees': {
       const actor = await getActor(event, store, 'coach');
       const { period, amountPaise } = parseObject(requestBody(event));
@@ -87,6 +163,15 @@ async function handleApi(
     default:
       throw new HttpError(404, 'ROUTE_NOT_FOUND', 'This route is not available.');
   }
+}
+
+function readHeader(headers: Record<string, string | undefined> | undefined, name: string) {
+  if (!headers) return undefined;
+  const target = name.toLowerCase();
+  for (const [key, value] of Object.entries(headers)) {
+    if (key.toLowerCase() === target) return value;
+  }
+  return undefined;
 }
 
 function requestBody(event: Event) {
@@ -106,12 +191,15 @@ export function createHandler(
   makeStore = createDynamoFeeStore,
   makeBillingStore = createDynamoBillingStore,
   makeContactVerification = createContactVerification,
+  makeRazPreview = generateRazFeePreview,
 ) {
   return async (event: Event): Promise<Response> => {
     try {
       const { method } = event.requestContext.http;
       if (method === 'GET' && event.rawPath === '/health') return success({ service: 'cleansheet' });
-      if (event.rawPath.startsWith('/api/')) return await handleApi(event, makeStore(), makeBillingStore, makeContactVerification);
+      if (event.rawPath.startsWith('/api/')) {
+        return await handleApi(event, makeStore(), makeBillingStore, makeContactVerification, makeRazPreview);
+      }
       throw new HttpError(404, 'ROUTE_NOT_FOUND', 'This route is not available.');
     } catch (error) {
       if (error instanceof HttpError) return json(error.status, { ok: false, error: { code: error.code, message: error.message } });
