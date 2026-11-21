@@ -29,13 +29,12 @@ import { GoogleIcon } from './icons';
 import { Landing } from './Landing';
 import {
   AnimatedAlert,
-  AuroraBackground,
   BlurReveal,
-  CursorGlow,
   MagneticButton,
   Marquee,
   MotionProvider,
   SpotlightCard,
+  TelemetryGridBackdrop,
   TextShimmer,
 } from './motion/primitives';
 import { ParentFeeView } from './ParentFeeView';
@@ -46,18 +45,18 @@ interface CleanSheetAppProps {
 }
 
 const pageTransition = {
-  initial: { opacity: 0, y: 18, filter: 'blur(8px)' },
-  animate: { opacity: 1, y: 0, filter: 'blur(0px)', transitionEnd: { filter: 'none' } },
-  exit: { opacity: 0, y: -12, filter: 'blur(6px)' },
-  transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] },
+  initial: { opacity: 0, y: 12 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -8 },
+  transition: { duration: 0.34, ease: [0.16, 1, 0.3, 1] },
 } as const;
 
 const MARQUEE_ITEMS = [
-  'CleanSheet',
-  'Collect fees, not excuses',
-  'Raz · Sarvam AI',
-  'Cashfree PG Sandbox',
-  'First Touch Academy U12',
+  'CLEANSHEET TELEMETRY',
+  'SARVAM SAARAS:V4 + 105B + MCP',
+  'CASHFREE PG & SUBSCRIPTIONS SANDBOX',
+  'SECURE ID OTP + RELAY CONSENT',
+  'FIRST TOUCH ACADEMY U12',
 ];
 
 export function CleanSheetApp({ routeRole, activePath }: CleanSheetAppProps) {
@@ -205,14 +204,14 @@ export function CleanSheetApp({ routeRole, activePath }: CleanSheetAppProps) {
     viewKey = 'checking';
     view = (
       <div className="card status-card">
-        <TextShimmer>Checking your sign-in…</TextShimmer>
+        <TextShimmer>Verifying Firebase session…</TextShimmer>
       </div>
     );
   } else if (needsSignIn) {
     viewKey = 'signin';
     view = (
       <SpotlightCard as="section" className="card signin-card" aria-labelledby="main-heading">
-        <p className="eyebrow">First Touch Academy · U12</p>
+        <p className="eyebrow mono">AUTH // FIRST TOUCH ACADEMY U12</p>
         <BlurReveal
           as="h1"
           id="main-heading"
@@ -221,7 +220,7 @@ export function CleanSheetApp({ routeRole, activePath }: CleanSheetAppProps) {
           text="Sign in to continue."
         />
         <p className="page-subtitle signin-sub">
-          Use the Google account linked to this academy as a coach or parent.
+          Authenticate with the Google account linked to your Coach or Parent role.
         </p>
         {!firebaseReady ? (
           <div className="alert alert-error" role="alert">
@@ -246,10 +245,10 @@ export function CleanSheetApp({ routeRole, activePath }: CleanSheetAppProps) {
     view = (
       <section className="card signin-card" aria-labelledby="main-heading">
         <h1 id="main-heading" tabIndex={-1} className="display-title">
-          <TextShimmer>Checking academy access…</TextShimmer>
+          <TextShimmer>Resolving academy role…</TextShimmer>
         </h1>
         <p className="page-subtitle">
-          Verifying your sign-in with <span className="mono">GET /api/me</span>.
+          Checking Firebase ID token via <span className="mono">GET /api/me</span>.
         </p>
         <AnimatedAlert message={authError} tone="error" role="alert" />
       </section>
@@ -259,14 +258,14 @@ export function CleanSheetApp({ routeRole, activePath }: CleanSheetAppProps) {
     view = (
       <section className="card signin-card" aria-labelledby="main-heading">
         <h1 id="main-heading" tabIndex={-1} className="display-title">
-          Wrong view for this account.
+          Scope boundary enforced.
         </h1>
         <p className="page-subtitle signin-sub">
-          You are signed in as <strong>{me.role}</strong> ({me.academyName} · {me.teamName}), so
-          you can&apos;t open the <strong>{routeRole}</strong> view.
+          You are authenticated as <strong>{me.role}</strong> ({me.academyName} · {me.teamName}),
+          which cannot open the <strong>{routeRole}</strong> view.
         </p>
         <Link href={me.role === 'coach' ? '/coach' : '/parent'} className="btn btn-teal">
-          Go to {me.role === 'coach' ? 'Coach dashboard' : 'Parent fee view'}
+          Go to {me.role === 'coach' ? 'Coach console' : 'Parent portal'}
         </Link>
       </section>
     );
@@ -288,8 +287,7 @@ export function CleanSheetApp({ routeRole, activePath }: CleanSheetAppProps) {
   return (
     <MotionProvider>
       <div className="app-shell">
-        <AuroraBackground />
-        <CursorGlow />
+        <TelemetryGridBackdrop />
 
         <AppHeader
           me={me}
@@ -313,9 +311,9 @@ export function CleanSheetApp({ routeRole, activePath }: CleanSheetAppProps) {
 
         <footer className="site-footer">
           <Marquee items={MARQUEE_ITEMS} />
-          <div className="footer-meta">
-            <span>Cashfree × Sarvam AI Buildathon · Bengaluru 2026</span>
-            <span>Invented demo data · Sandbox payments only</span>
+          <div className="footer-meta mono">
+            <span>CLEANSHEET // CASHFREE × SARVAM BUILDATHON</span>
+            <span>FIREBASE AUTH + FIRESTORE RULES + SANDBOX ONLY</span>
           </div>
         </footer>
       </div>

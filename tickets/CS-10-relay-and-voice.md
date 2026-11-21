@@ -1,6 +1,6 @@
 # CS-10 · Cashfree Relay and Sarvam outreach
 
-**Owner** [Sarvam / Relay](../roles/04-sarvam.md) · **Start with** Relay merchant access and consenting adult test contacts
+**Owner** `@jv-013` ([Sarvam / Relay](../roles/04-sarvam.md)) · **Status** `MERGEABLE` (`deliverables/release/cs-10-relay-outreach.md`, `src/lib/client/relay-scripts.ts`) · **Start with** Relay merchant access and consenting adult test contacts
 
 - Verify available Payment Recovery and Subscription Dunning workflows, supported triggers and callbacks, and Sarvam as the permitted voice provider. Ask for the account-specific workflow setup for pre-charge outreach, recovery link delivery, coach cancellation calls, and refund review.
 - Draft short calls for the parent reminder, payment recovery, and coach cancellation. Route the parent's keep or cancel choice to the authenticated billing screen. Use the [approved action contract](../docs/RELAY_CONTRACT.md#provider-and-agent-handoffs) and capture only verified outcomes.

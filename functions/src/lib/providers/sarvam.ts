@@ -2,12 +2,20 @@ import { SarvamAI, SarvamAIClient } from 'sarvamai';
 
 export type SupportedLocale = 'hi-IN' | 'kn-IN';
 
+export interface FeeSummaryContext {
+  expectedPaise: number;
+  collectedPaise: number;
+  outstandingPaise: number;
+  paidFeeCount: number;
+}
+
 export interface RazPreviewResult {
   transcript: string;
   preview: {
     period: string;
     amountPaise: number;
   };
+  mcpSummary?: FeeSummaryContext;
 }
 
 export class SarvamProviderError extends Error {
@@ -124,6 +132,7 @@ export async function interpretFeeCommandWithSarvam105B(input: {
   transcript: string;
   locale: SupportedLocale;
   defaultPeriod: string;
+  feeSummary?: FeeSummaryContext;
 }, apiKey?: string): Promise<RazPreviewResult> {
   const trimmed = input.transcript.trim();
   if (!trimmed) {
@@ -136,14 +145,19 @@ export async function interpretFeeCommandWithSarvam105B(input: {
 
   const client = getSarvamClient(apiKey);
 
+  const summaryLine = input.feeSummary
+    ? `Current coach MCP ledger summary for ${input.defaultPeriod}: expected ₹${Math.round(input.feeSummary.expectedPaise / 100)}, collected ₹${Math.round(input.feeSummary.collectedPaise / 100)}, outstanding ₹${Math.round(input.feeSummary.outstandingPaise / 100)}, paid count ${input.feeSummary.paidFeeCount}.`
+    : null;
+
   const systemPrompt = [
     'You are Raz, the fee-preview assistant for First Touch Academy (U12 squad).',
     'You only prepare a single fee preview by calling prepare_fee_preview. Never invent amounts.',
     `The user may speak or type in Hindi (hi-IN), Kannada (kn-IN), or English. Selected locale: ${input.locale}.`,
     `Default billing period is ${input.defaultPeriod} (YYYY-MM).`,
+    summaryLine,
     'If the command clearly states a monthly fee amount in rupees (e.g. 1500, ₹1,500, 1500 रुपये, ೧೫೦೦ ರೂಪಾಯಿ), call prepare_fee_preview with isAmbiguous=false, amountRupees=<number>, and period="YYYY-MM".',
     'If the command is greeting-only, ambiguous, or missing a rupee fee amount, call prepare_fee_preview with isAmbiguous=true and amountRupees=0.',
-  ].join(' ');
+  ].filter(Boolean).join(' ');
 
   let completion: SarvamAI.CreateChatCompletionResponse;
   try {
@@ -221,6 +235,7 @@ export async function interpretFeeCommandWithSarvam105B(input: {
       period: resolvedPeriod,
       amountPaise,
     },
+    ...(input.feeSummary ? { mcpSummary: input.feeSummary } : {}),
   };
 }
 
@@ -231,6 +246,7 @@ export async function generateRazFeePreview(input: {
   text?: string;
   locale: SupportedLocale;
   period: string;
+  feeSummary?: FeeSummaryContext;
 }, apiKey?: string): Promise<RazPreviewResult> {
   if (!isSupportedLocale(input.locale)) {
     throw new SarvamProviderError(
@@ -262,5 +278,6 @@ export async function generateRazFeePreview(input: {
     transcript,
     locale: input.locale,
     defaultPeriod: input.period,
+    feeSummary: input.feeSummary,
   }, apiKey);
 }

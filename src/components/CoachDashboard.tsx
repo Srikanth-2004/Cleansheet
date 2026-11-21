@@ -3,7 +3,10 @@
 import { AnimatePresence, motion } from 'motion/react';
 import { type FormEvent, type KeyboardEvent, useCallback, useEffect, useId, useRef, useState } from 'react';
 import {
+  approveCoachRefund,
   confirmCoachFee,
+  fetchCoachNotifications,
+  fetchCoachRefunds,
   fetchCoachSummary,
   previewRazFee,
 } from '@/lib/client/api';
@@ -12,7 +15,9 @@ import {
   createAudioRecorder,
   detectSupportedAudioMimeType,
 } from '@/lib/client/recorder';
+import { RELAY_CALL_SCRIPTS } from '@/lib/client/relay-scripts';
 import {
+  type CoachNotification,
   type CoachSummaryData,
   type CreateFeeData,
   DEFAULT_DEMO_PERIOD,
@@ -21,6 +26,7 @@ import {
   type Locale,
   type MeData,
   type RazPreviewData,
+  type RefundCaseView,
 } from '@/lib/client/types';
 import { MicIcon, RefreshIcon, SparkIcon, StopIcon } from './icons';
 import {
@@ -29,9 +35,11 @@ import {
   BlurReveal,
   CheckDraw,
   fadeSwap,
+  LifecyclePipeline,
   MagneticButton,
   MorphPill,
   ParticleBurst,
+  type PipelineStage,
   PulseRings,
   SpotlightCard,
   TextShimmer,
@@ -62,12 +70,15 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
     outstandingPaise: 0,
     paidFeeCount: 0,
   });
+  const [notifications, setNotifications] = useState<CoachNotification[]>([]);
+  const [refunds, setRefunds] = useState<RefundCaseView[]>([]);
   const [loadingSummary, setLoadingSummary] = useState<boolean>(true);
   const [lastRefreshedAt, setLastRefreshedAt] = useState<string>('');
 
   const [supportedMimeType, setSupportedMimeType] = useState<string>('checking...');
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const [recordingSeconds, setRecordingSeconds] = useState<number>(0);
+  const [audioLevels, setAudioLevels] = useState<number[]>([]);
   const [lastAudioMeta, setLastAudioMeta] = useState<string>('');
 
   const [previewBusy, setPreviewBusy] = useState<boolean>(false);
@@ -75,6 +86,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
   const [confirmBusy, setConfirmBusy] = useState<boolean>(false);
   const [confirmedFee, setConfirmedFee] = useState<CreateFeeData | null>(null);
   const [confirmBurstCount, setConfirmBurstCount] = useState<number>(0);
+  const [refundBusyId, setRefundBusyId] = useState<string | null>(null);
 
   const [statusMessage, setStatusMessage] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string>('');
@@ -85,23 +97,34 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
   const selectedLocaleMeta =
     LOCALE_OPTIONS.find((item) => item.value === locale) ?? LOCALE_OPTIONS[0];
 
-  const loadSummary = useCallback(async () => {
+  const loadCoachWorkspace = useCallback(async () => {
     setLoadingSummary(true);
-    const res = await fetchCoachSummary(period);
+    const [sumRes, notifRes, refundRes] = await Promise.all([
+      fetchCoachSummary(period),
+      fetchCoachNotifications(),
+      fetchCoachRefunds(),
+    ]);
     setLoadingSummary(false);
 
-    if (res.ok) {
-      setSummary(res.data);
+    if (sumRes.ok) {
+      setSummary(sumRes.data);
       setLastRefreshedAt(new Date().toLocaleTimeString('en-IN', { hour12: true }));
       setErrorMessage('');
     } else {
-      setErrorMessage(`${res.error.code}: ${res.error.message}`);
+      setErrorMessage(`${sumRes.error.code}: ${sumRes.error.message}`);
+    }
+
+    if (notifRes.ok) {
+      setNotifications(notifRes.data.notifications);
+    }
+    if (refundRes.ok) {
+      setRefunds(refundRes.data.refunds);
     }
   }, [period]);
 
   useEffect(() => {
-    void loadSummary();
-  }, [loadSummary, refreshSignal]);
+    void loadCoachWorkspace();
+  }, [loadCoachWorkspace, refreshSignal]);
 
   useEffect(() => {
     const detected = detectSupportedAudioMimeType();
@@ -129,7 +152,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
     try {
       const recorder = createAudioRecorder();
       recorderRef.current = recorder;
-      await recorder.start();
+      await recorder.start((levels) => setAudioLevels(levels));
       setIsRecording(true);
       setRecordingSeconds(0);
       timerRef.current = window.setInterval(() => {
@@ -137,6 +160,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
       }, 1000);
     } catch (err) {
       setIsRecording(false);
+      setAudioLevels([]);
       setErrorMessage(
         err instanceof Error
           ? err.message
@@ -154,10 +178,12 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
     const recorder = recorderRef.current;
     if (!recorder) {
       setIsRecording(false);
+      setAudioLevels([]);
       return;
     }
 
     setIsRecording(false);
+    setAudioLevels([]);
     setPreviewBusy(true);
 
     try {
@@ -204,6 +230,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
       mimeType: sampleBlob.type,
       locale,
       period,
+      fixtureOnly: true,
     });
     setPreviewBusy(false);
 
@@ -277,7 +304,25 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
       setStatusMessage(
         `Fee confirmed (${res.data.feeId}, status: ${res.data.status}). Collections refreshed.`,
       );
-      await loadSummary();
+      await loadCoachWorkspace();
+    } else {
+      setErrorMessage(`${res.error.code}: ${res.error.message}`);
+    }
+  }
+
+  async function handleApproveRefund(caseId: string, amountPaise: number) {
+    setErrorMessage('');
+    setStatusMessage('');
+    setRefundBusyId(caseId);
+
+    const res = await approveCoachRefund(caseId, amountPaise);
+    setRefundBusyId(null);
+
+    if (res.ok) {
+      setStatusMessage(
+        `Refund approved for ${caseId} (${formatPaise(res.data.amountPaise ?? amountPaise)}, ref ${res.data.refundId}). Net collected updated.`,
+      );
+      await loadCoachWorkspace();
     } else {
       setErrorMessage(`${res.error.code}: ${res.error.message}`);
     }
@@ -288,31 +333,62 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
       ? Math.min(100, Math.round((summary.collectedPaise / summary.expectedPaise) * 100))
       : 0;
 
+  const hasFee = summary.expectedPaise > 0;
+  const hasPaid = summary.paidFeeCount > 0;
+  const hasRefunded = refunds.some((r) => r.status === 'refunded');
+
+  const stages: PipelineStage[] = [
+    {
+      id: 'voice',
+      code: '01',
+      label: 'Raz Voice Preview',
+      state: previewResult || hasFee ? 'done' : 'active',
+    },
+    {
+      id: 'confirm',
+      code: '02',
+      label: 'Coach Confirmed',
+      state: hasFee ? 'done' : previewResult ? 'active' : 'pending',
+    },
+    {
+      id: 'checkout',
+      code: '03',
+      label: 'Parent / Mandate',
+      state: hasPaid ? 'done' : hasFee ? 'active' : 'pending',
+    },
+    {
+      id: 'settled',
+      code: '04',
+      label: hasRefunded ? 'Refund Reconciled' : 'Ledger Verified',
+      state: hasPaid ? 'done' : 'pending',
+    },
+  ];
+
   return (
     <div>
       <div className="page-intro">
         <div>
-          <p className="eyebrow">
-            {me.academyName} · {me.teamName} Squad
+          <p className="eyebrow mono">
+            CONSOLE // {me.academyName} · {me.teamName} SQUAD
           </p>
           <BlurReveal
             as="h1"
             id="main-heading"
             tabIndex={-1}
             className="page-title"
-            text="Coach Collections Dashboard"
-            highlightWords={['Collections']}
+            text="Coach Command Deck"
+            highlightWords={['Deck']}
           />
           <p className="page-subtitle">
-            Billing period <span className="mono">{period}</span> · Speak to Raz, confirm the
-            preview, and track verified settlements.
+            Period <span className="mono">{period}</span> · Sarvam STT + MCP ledger + Cashfree
+            reconciliation.
           </p>
         </div>
 
         <div className="button-row">
           <MagneticButton
             className="btn btn-teal"
-            onClick={() => void loadSummary()}
+            onClick={() => void loadCoachWorkspace()}
             disabled={loadingSummary}
           >
             <RefreshIcon />
@@ -321,13 +397,15 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
         </div>
       </div>
 
+      <LifecyclePipeline stages={stages} />
+
       <section aria-label="Squad fee summary" className="summary-grid">
         <SpotlightCard
           className="metric-card"
           spotlightColor="rgba(242, 233, 231, 0.14)"
           delay={0.04}
         >
-          <span className="metric-label">Expected</span>
+          <span className="metric-label mono">01 // Expected</span>
           <AnimatedNumber
             value={summary.expectedPaise}
             format={formatAnimatedRupees}
@@ -338,24 +416,26 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
 
         <SpotlightCard
           className="metric-card metric-card-collected"
-          spotlightColor="rgba(89, 124, 128, 0.32)"
-          delay={0.09}
+          spotlightColor="rgba(89, 124, 128, 0.34)"
+          delay={0.08}
         >
-          <span className="metric-label">Collected</span>
+          <span className="metric-label mono">02 // Net Collected</span>
           <AnimatedNumber
             value={summary.collectedPaise}
             format={formatAnimatedRupees}
             className="metric-value"
           />
-          <span className="metric-hint">Server-verified Cashfree payments</span>
+          <span className="metric-hint">
+            {hasRefunded ? 'Net after verified refund' : 'Server-verified Cashfree ledger'}
+          </span>
         </SpotlightCard>
 
         <SpotlightCard
           className="metric-card metric-card-outstanding"
-          spotlightColor="rgba(158, 92, 85, 0.32)"
-          delay={0.14}
+          spotlightColor="rgba(158, 92, 85, 0.34)"
+          delay={0.12}
         >
-          <span className="metric-label">Outstanding</span>
+          <span className="metric-label mono">03 // Outstanding</span>
           <AnimatedNumber
             value={summary.outstandingPaise}
             format={formatAnimatedRupees}
@@ -366,28 +446,28 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
 
         <SpotlightCard
           className="metric-card"
-          spotlightColor="rgba(89, 124, 128, 0.22)"
-          delay={0.19}
+          spotlightColor="rgba(89, 124, 128, 0.24)"
+          delay={0.16}
         >
-          <span className="metric-label">Paid Fees</span>
+          <span className="metric-label mono">04 // Paid Fees</span>
           <AnimatedNumber value={summary.paidFeeCount} className="metric-value" />
           <span className="metric-hint">
-            {lastRefreshedAt ? `Updated ${lastRefreshedAt}` : 'Live period count'}
+            {lastRefreshedAt ? `Synced ${lastRefreshedAt}` : 'Live period count'}
           </span>
         </SpotlightCard>
       </section>
 
       <div className="collection-progress-card" aria-label="Period collection progress">
         <div className="collection-progress-header">
-          <span>Collection progress ({period})</span>
-          <span className="mono">{collectionPct}% verified</span>
+          <span className="mono">COLLECTION RATIO // {period}</span>
+          <span className="mono">{collectionPct}% net verified</span>
         </div>
         <div className="collection-progress-track">
           <motion.div
             className="collection-progress-fill"
             initial={{ width: 0 }}
             animate={{ width: `${collectionPct}%` }}
-            transition={{ duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
+            transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
           />
         </div>
       </div>
@@ -397,14 +477,16 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
           as="section"
           className="card"
           spotlightColor="rgba(89, 124, 128, 0.24)"
-          delay={0.22}
+          delay={0.2}
           aria-labelledby="raz-command-heading"
         >
+          <div className="panel-index mono">01 // RAZ.VOICE.CONSOLE</div>
           <h2 id="raz-command-heading" className="section-heading">
             Ask Raz to Prepare a Fee
           </h2>
           <p className="section-caption">
-            Record in Hindi or Kannada, or type the command through the same Sarvam AI preview path.
+            Record in Hindi or Kannada, or type the command through the same Sarvam AI + MCP tool
+            path.
           </p>
 
           <fieldset className="fieldset-clean">
@@ -447,7 +529,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
 
           <div className="card-elevated voice-panel">
             <div className="voice-panel-header">
-              <strong>Voice Command (Sarvam STT + Tool Call)</strong>
+              <strong>Voice Command (Sarvam saaras:v4 + 105B)</strong>
               <span className="pill mono">MIME: {supportedMimeType}</span>
             </div>
 
@@ -486,16 +568,16 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
               )}
             </div>
 
-            <VoiceWave active={isRecording || previewBusy} />
+            <VoiceWave active={isRecording || previewBusy} levels={audioLevels} />
 
             {previewBusy && (
               <p className="field-hint" style={{ margin: '0.35rem 0 0' }}>
-                <TextShimmer>Raz is listening &amp; drafting preview…</TextShimmer>
+                <TextShimmer>Raz is transcribing &amp; checking MCP totals…</TextShimmer>
               </p>
             )}
 
             {lastAudioMeta && (
-              <p className="field-hint" style={{ margin: '0.4rem 0 0' }}>
+              <p className="field-hint mono" style={{ margin: '0.4rem 0 0' }}>
                 {lastAudioMeta}
               </p>
             )}
@@ -555,9 +637,10 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
           spotlightColor={
             confirmedFee ? 'rgba(89, 124, 128, 0.34)' : 'rgba(158, 92, 85, 0.24)'
           }
-          delay={0.28}
+          delay={0.24}
           aria-labelledby="preview-confirm-heading"
         >
+          <div className="panel-index mono">02 // PROPOSAL.CONFIRMATION</div>
           <div className="preview-header">
             <h2 id="preview-confirm-heading" className="section-heading" style={{ margin: 0 }}>
               Fee Proposal Preview
@@ -578,8 +661,8 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
                 style={{ marginBottom: 0 }}
                 {...fadeSwap}
               >
-                No proposal loaded yet. Record or submit a fee command to see Raz&apos;s transcript
-                and extracted paise amount before any fee is written.
+                No proposal loaded yet. Record or submit a command to inspect Raz&apos;s transcript
+                and paise amount before writing to the ledger.
               </motion.p>
             ) : (
               <motion.div key={previewResult.transcript} {...fadeSwap}>
@@ -591,7 +674,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
                   className="transcript-box"
                   lang={selectedLocaleMeta.htmlLang}
                   text={previewResult.transcript}
-                  stagger={0.04}
+                  stagger={0.03}
                 />
 
                 <dl className="kv-list" style={{ marginBottom: '1.25rem' }}>
@@ -618,6 +701,15 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
                       </span>
                     </dd>
                   </div>
+                  {previewResult.mcpSummary && (
+                    <div className="kv-row">
+                      <dt>MCP get_fee_summary</dt>
+                      <dd className="mono">
+                        Exp {formatPaise(previewResult.mcpSummary.expectedPaise)} · Col{' '}
+                        {formatPaise(previewResult.mcpSummary.collectedPaise)}
+                      </dd>
+                    </div>
+                  )}
                   {confirmedFee && (
                     <div className="kv-row">
                       <dt>Created Fee Record</dt>
@@ -663,6 +755,130 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
               </motion.div>
             )}
           </AnimatePresence>
+        </SpotlightCard>
+      </div>
+
+      <div className="coach-grid" style={{ marginTop: '1.25rem' }}>
+        <SpotlightCard
+          as="section"
+          className="card"
+          spotlightColor="rgba(158, 92, 85, 0.24)"
+          delay={0.28}
+          aria-labelledby="refund-desk-heading"
+        >
+          <div className="panel-index mono">03 // SCOPED.REFUND.APPROVAL</div>
+          <h2 id="refund-desk-heading" className="section-heading">
+            Refund Cases (CS-12)
+          </h2>
+          <p className="section-caption">
+            Approve bounded partial or full refunds on the original Cashfree rail without reopening
+            settled fee records.
+          </p>
+
+          {refunds.length === 0 ? (
+            <p className="field-hint" style={{ margin: 0 }}>
+              No active refund cases. Switch to <strong>Refund ₹500</strong> in the top bar (or open
+              a case) to test net-collected reconciliation.
+            </p>
+          ) : (
+            <ul className="notif-list">
+              {refunds.map((item) => (
+                <li key={item.caseId} className="notif-item">
+                  <div className="notif-header">
+                    <strong className="mono">{item.caseId}</strong>
+                    <span
+                      className={`pill mono ${
+                        item.status === 'refunded' ? 'pill-teal' : 'pill-terracotta'
+                      }`}
+                    >
+                      {item.status.toUpperCase()}
+                    </span>
+                  </div>
+                  <p className="field-hint" style={{ margin: '0.25rem 0 0.75rem' }}>
+                    Amount: <strong>{formatPaise(item.amountPaise ?? 50000)}</strong>
+                    {item.refundId ? ` · Ref: ${item.refundId}` : ''}
+                  </p>
+                  {item.status !== 'refunded' && (
+                    <MagneticButton
+                      className="btn btn-terracotta btn-compact"
+                      onClick={() =>
+                        void handleApproveRefund(item.caseId, item.amountPaise ?? 50000)
+                      }
+                      disabled={refundBusyId === item.caseId}
+                    >
+                      {refundBusyId === item.caseId
+                        ? 'Approving Refund…'
+                        : `Approve ${formatPaise(item.amountPaise ?? 50000)} Refund`}
+                    </MagneticButton>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </SpotlightCard>
+
+        <SpotlightCard
+          as="section"
+          className="card"
+          spotlightColor="rgba(89, 124, 128, 0.24)"
+          delay={0.32}
+          aria-labelledby="notifications-heading"
+        >
+          <div className="panel-index mono">04 // RELAY.ALERTS &amp; VOICE.SCRIPTS</div>
+          <h2 id="notifications-heading" className="section-heading">
+            Coach Notifications &amp; Relay Feed
+          </h2>
+          <p className="section-caption">
+            Idempotent settlement notices, cancellation calls, and bilingual Sarvam × Relay voice
+            scripts.
+          </p>
+
+          {notifications.length === 0 ? (
+            <p className="field-hint">
+              No billing notifications yet. Complete a sandbox payment, cancellation, or refund to
+              see single-delivery ledger events.
+            </p>
+          ) : (
+            <ul className="notif-list" style={{ marginBottom: '1rem' }}>
+              {notifications.map((note) => (
+                <li key={note.id} className="notif-item">
+                  <div className="notif-header">
+                    <span className="pill pill-teal mono">{note.kind}</span>
+                    {typeof note.amountPaise === 'number' && (
+                      <strong className="mono">{formatPaise(note.amountPaise)}</strong>
+                    )}
+                  </div>
+                  <p style={{ margin: '0.4rem 0 0.15rem', fontSize: '0.94rem' }}>
+                    {note.subjectLabel}
+                  </p>
+                  <span className="field-hint mono">{note.occurredAt}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <details className="relay-details">
+            <summary className="mono">View CS-10 Bilingual Relay Scripts ({RELAY_CALL_SCRIPTS.length})</summary>
+            <ul className="notif-list" style={{ marginTop: '0.75rem' }}>
+              {RELAY_CALL_SCRIPTS.map((script) => (
+                <li key={script.kind} className="notif-item">
+                  <div className="notif-header">
+                    <strong>{script.title}</strong>
+                    <span className="pill mono">{script.kind}</span>
+                  </div>
+                  <p className="field-hint" style={{ margin: '0.3rem 0' }}>
+                    {script.englishSummary}
+                  </p>
+                  <p className="field-hint" lang="hi" style={{ margin: '0.25rem 0' }}>
+                    <strong>HI:</strong> {script.hindiScript}
+                  </p>
+                  <p className="field-hint" lang="kn" style={{ margin: '0.25rem 0 0' }}>
+                    <strong>KN:</strong> {script.kannadaScript}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </details>
         </SpotlightCard>
       </div>
     </div>

@@ -1,10 +1,13 @@
 'use client';
 
 /**
- * CleanSheet motion primitives, adapted from patterns popularised by
- * motion.dev, motion-primitives (AnimatedNumber, TextShimmer), React Bits
- * (BlurText, SpotlightCard), and hover.dev (magnetic buttons, sliding pills).
- * Everything respects prefers-reduced-motion via <MotionConfig reducedMotion="user">.
+ * Architectural sports-telemetry motion primitives:
+ * - LineMaskReveal: crisp baseline overflow mask wipe
+ * - CurtainButton: upward sweeping contrast fill curtain
+ * - TelemetryPanel: geometric clip-path reveal + spring 3D micro-tilt + corner ticks
+ * - LifecyclePipeline: 4-stage spring layoutId telemetry rail
+ * - AnimatedNumber: spring-interpolated integer counter
+ * - VoiceWave: real-time AnalyserNode spectrum or active processing bar wave
  */
 
 import {
@@ -28,13 +31,77 @@ import {
   useState,
 } from 'react';
 
-const EASE_OUT_EXPO = [0.22, 1, 0.36, 1] as const;
+const EASE_SHARP = [0.16, 1, 0.3, 1] as const;
 
 export function MotionProvider({ children }: { children: ReactNode }) {
   return <MotionConfig reducedMotion="user">{children}</MotionConfig>;
 }
 
-/* ---------- AnimatedNumber (motion-primitives) ---------- */
+/* ---------- Architectural Telemetry Grid Backdrop ---------- */
+
+export function TelemetryGridBackdrop() {
+  return (
+    <div className="telemetry-bg" aria-hidden="true">
+      <div className="telemetry-grid-lines" />
+      <div className="telemetry-horizon" />
+    </div>
+  );
+}
+
+/* ---------- LineMaskReveal (Lando / Editorial Wipe) ---------- */
+
+type RevealTag = 'h1' | 'h2' | 'p' | 'blockquote';
+
+export function BlurReveal({
+  text,
+  as = 'h1',
+  className,
+  id,
+  tabIndex,
+  lang,
+  delay = 0,
+  stagger = 0.045,
+  highlightWords = [],
+}: {
+  text: string;
+  as?: RevealTag;
+  className?: string;
+  id?: string;
+  tabIndex?: number;
+  lang?: string;
+  delay?: number;
+  stagger?: number;
+  highlightWords?: string[];
+}) {
+  const Tag = as;
+  const words = text.split(' ');
+  const reduce = useReducedMotion();
+
+  return (
+    <Tag key={text} id={id} tabIndex={tabIndex} className={className} lang={lang}>
+      <span className="visually-hidden">{text}</span>
+      {words.map((word, i) => (
+        <span key={`${word}-${i}`} className="mask-word-clip" aria-hidden="true">
+          <motion.span
+            className={`mask-word ${highlightWords.includes(word) ? 'reveal-word-accent' : ''}`}
+            initial={reduce ? { y: 0, opacity: 1 } : { y: '112%', opacity: 0.2 }}
+            animate={{ y: '0%', opacity: 1 }}
+            transition={{
+              delay: delay + i * stagger,
+              duration: 0.52,
+              ease: EASE_SHARP,
+            }}
+          >
+            {word}
+            {i < words.length - 1 ? '\u00A0' : ''}
+          </motion.span>
+        </span>
+      ))}
+    </Tag>
+  );
+}
+
+/* ---------- AnimatedNumber ---------- */
 
 export function AnimatedNumber({
   value,
@@ -50,7 +117,7 @@ export function AnimatedNumber({
   const reduce = useReducedMotion();
   const ref = useRef<HTMLSpanElement | null>(null);
   const inView = useInView(ref, { once: true, margin: '0px' });
-  const spring = useSpring(reduce ? value : 0, { stiffness: 70, damping: 18, mass: 0.9 });
+  const spring = useSpring(reduce ? value : 0, { stiffness: 95, damping: 20, mass: 0.8 });
   const display = useTransform(spring, (v) => format(Math.round(v)));
 
   useEffect(() => {
@@ -72,12 +139,12 @@ export function AnimatedNumber({
   );
 }
 
-/* ---------- TextShimmer (motion-primitives) ---------- */
+/* ---------- TextShimmer ---------- */
 
 export function TextShimmer({
   children,
   className = '',
-  duration = 1.8,
+  duration = 1.6,
 }: {
   children: ReactNode;
   className?: string;
@@ -95,109 +162,105 @@ export function TextShimmer({
   );
 }
 
-/* ---------- BlurReveal (React Bits BlurText) ---------- */
+/* ---------- TelemetryPanel (Geometric Clip + 3D Tilt + Border Spotlight) ---------- */
 
-type RevealTag = 'h1' | 'h2' | 'p' | 'blockquote';
+type PanelTag = 'div' | 'section' | 'li' | 'aside';
 
-export function BlurReveal({
-  text,
-  as = 'h1',
-  className,
-  id,
-  tabIndex,
-  lang,
-  delay = 0,
-  stagger = 0.06,
-  highlightWords = [],
-}: {
-  text: string;
-  as?: RevealTag;
-  className?: string;
-  id?: string;
-  tabIndex?: number;
-  lang?: string;
-  delay?: number;
-  stagger?: number;
-  highlightWords?: string[];
-}) {
-  const Tag = as;
-  const words = text.split(' ');
-
-  return (
-    <Tag key={text} id={id} tabIndex={tabIndex} className={className} lang={lang}>
-      <span className="visually-hidden">{text}</span>
-      {words.map((word, i) => (
-        <motion.span
-          key={`${word}-${i}`}
-          aria-hidden="true"
-          className={`reveal-word ${highlightWords.includes(word) ? 'reveal-word-accent' : ''}`}
-          initial={{ opacity: 0, y: '0.35em', filter: 'blur(12px)' }}
-          animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
-          transition={{ delay: delay + i * stagger, duration: 0.75, ease: EASE_OUT_EXPO }}
-        >
-          {word}
-          {i < words.length - 1 ? '\u00A0' : ''}
-        </motion.span>
-      ))}
-    </Tag>
-  );
-}
-
-/* ---------- SpotlightCard (React Bits) ---------- */
-
-type SpotlightTag = 'div' | 'section' | 'li';
-
-interface SpotlightCardProps extends HTMLMotionProps<'div'> {
-  as?: SpotlightTag;
+interface TelemetryPanelProps extends HTMLMotionProps<'div'> {
+  as?: PanelTag;
   spotlightColor?: string;
   delay?: number;
+  tilt?: boolean;
 }
 
 export function SpotlightCard({
   as = 'div',
-  spotlightColor = 'rgba(89, 124, 128, 0.28)',
+  spotlightColor = 'rgba(89, 124, 128, 0.34)',
   delay = 0,
+  tilt = true,
   className = '',
   style,
   children,
   onPointerMove,
+  onPointerLeave,
   ...rest
-}: SpotlightCardProps) {
+}: TelemetryPanelProps) {
+  const reduce = useReducedMotion();
   const Comp = (
-    as === 'section' ? motion.section : as === 'li' ? motion.li : motion.div
+    as === 'section'
+      ? motion.section
+      : as === 'li'
+        ? motion.li
+        : as === 'aside'
+          ? motion.aside
+          : motion.div
   ) as unknown as typeof motion.div;
+
+  const rx = useMotionValue(0);
+  const ry = useMotionValue(0);
+  const srx = useSpring(rx, { stiffness: 260, damping: 22 });
+  const sry = useSpring(ry, { stiffness: 260, damping: 22 });
 
   function handleMove(event: ReactPointerEvent<HTMLDivElement>) {
     const el = event.currentTarget;
     const rect = el.getBoundingClientRect();
-    el.style.setProperty('--spot-x', `${event.clientX - rect.left}px`);
-    el.style.setProperty('--spot-y', `${event.clientY - rect.top}px`);
+    const px = event.clientX - rect.left;
+    const py = event.clientY - rect.top;
+    el.style.setProperty('--spot-x', `${px}px`);
+    el.style.setProperty('--spot-y', `${py}px`);
+
+    if (!reduce && tilt && event.pointerType === 'mouse' && rect.width > 0 && rect.height > 0) {
+      const nx = (px / rect.width - 0.5) * 2;
+      const ny = (py / rect.height - 0.5) * 2;
+      rx.set(-ny * 1.8);
+      ry.set(nx * 1.8);
+    }
     onPointerMove?.(event);
+  }
+
+  function handleLeave(event: ReactPointerEvent<HTMLDivElement>) {
+    rx.set(0);
+    ry.set(0);
+    onPointerLeave?.(event);
   }
 
   return (
     <Comp
-      className={`spotlight-card ${className}`}
-      style={{ ...(style ?? {}), ['--spot-color' as string]: spotlightColor } as CSSProperties}
-      initial={{ opacity: 0, y: 24, filter: 'blur(6px)' }}
-      animate={{ opacity: 1, y: 0, filter: 'blur(0px)', transitionEnd: { filter: 'none' } }}
-      transition={{ delay, duration: 0.75, ease: EASE_OUT_EXPO }}
+      className={`telemetry-panel ${className}`}
+      style={{
+        ...(style ?? {}),
+        rotateX: srx,
+        rotateY: sry,
+        transformPerspective: 1100,
+        ['--spot-color' as string]: spotlightColor,
+      } as CSSProperties}
+      initial={reduce ? { opacity: 1 } : { opacity: 0, y: 14, clipPath: 'inset(0 0 14% 0)' }}
+      animate={{
+        opacity: 1,
+        y: 0,
+        clipPath: 'inset(0 0 0% 0)',
+        transitionEnd: { clipPath: 'none' },
+      }}
+      transition={{ delay, duration: 0.48, ease: EASE_SHARP }}
       onPointerMove={handleMove}
+      onPointerLeave={handleLeave}
       {...rest}
     >
-      {children}
+      <span className="panel-corner panel-corner-tl" aria-hidden="true" />
+      <span className="panel-corner panel-corner-tr" aria-hidden="true" />
+      {children as ReactNode}
     </Comp>
   );
 }
 
-/* ---------- MagneticButton (hover.dev) ---------- */
+/* ---------- CurtainButton (Kinetic Sweep Fill + Magnetic Pull) ---------- */
 
-interface MagneticButtonProps extends HTMLMotionProps<'button'> {
+interface CurtainButtonProps extends HTMLMotionProps<'button'> {
   strength?: number;
 }
 
 export function MagneticButton({
-  strength = 0.28,
+  strength = 0.16,
   className = '',
   type = 'button',
   disabled,
@@ -205,14 +268,12 @@ export function MagneticButton({
   onPointerMove,
   onPointerLeave,
   ...rest
-}: MagneticButtonProps) {
+}: CurtainButtonProps) {
   const reduce = useReducedMotion();
   const x = useMotionValue(0);
   const y = useMotionValue(0);
-  const sx = useSpring(x, { stiffness: 300, damping: 18, mass: 0.5 });
-  const sy = useSpring(y, { stiffness: 300, damping: 18, mass: 0.5 });
-  const innerX = useTransform(sx, (v) => v * 0.45);
-  const innerY = useTransform(sy, (v) => v * 0.45);
+  const sx = useSpring(x, { stiffness: 360, damping: 24, mass: 0.4 });
+  const sy = useSpring(y, { stiffness: 360, damping: 24, mass: 0.4 });
 
   function handleMove(event: ReactPointerEvent<HTMLButtonElement>) {
     if (!reduce && !disabled && event.pointerType === 'mouse') {
@@ -232,23 +293,60 @@ export function MagneticButton({
   return (
     <motion.button
       type={type}
-      className={`magnetic ${className}`}
+      className={`curtain-btn ${className}`}
       style={{ x: sx, y: sy }}
-      whileHover={disabled ? undefined : { scale: 1.03 }}
-      whileTap={disabled ? undefined : { scale: 0.96 }}
+      whileTap={disabled ? undefined : { scale: 0.975 }}
       disabled={disabled}
       onPointerMove={handleMove}
       onPointerLeave={handleLeave}
       {...rest}
     >
-      <motion.span className="magnetic-inner" style={{ x: innerX, y: innerY }}>
-        {children as ReactNode}
-      </motion.span>
+      <span className="curtain-bg" aria-hidden="true" />
+      <span className="curtain-content">{children as ReactNode}</span>
     </motion.button>
   );
 }
 
-/* ---------- Sliding segmented control (hover.dev / motion layoutId) ---------- */
+/* ---------- 4-Stage Telemetry Pipeline ---------- */
+
+export interface PipelineStage {
+  id: string;
+  code: string;
+  label: string;
+  state: 'done' | 'active' | 'pending';
+}
+
+export function LifecyclePipeline({ stages }: { stages: ReadonlyArray<PipelineStage> }) {
+  return (
+    <ol className="telemetry-pipeline" aria-label="Collection lifecycle stages">
+      {stages.map((stage, idx) => (
+        <motion.li
+          key={stage.id}
+          className={`pipeline-node is-${stage.state}`}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: idx * 0.05, duration: 0.4, ease: EASE_SHARP }}
+        >
+          <div className="pipeline-meta">
+            <span className="mono pipeline-code">{stage.code}</span>
+            <span className={`pipeline-dot is-${stage.state}`} aria-hidden="true" />
+          </div>
+          <span className="pipeline-label">{stage.label}</span>
+          <span className="pipeline-track" aria-hidden="true">
+            <motion.span
+              className="pipeline-fill"
+              initial={{ scaleX: 0 }}
+              animate={{ scaleX: stage.state === 'done' ? 1 : stage.state === 'active' ? 0.55 : 0 }}
+              transition={{ duration: 0.55, ease: EASE_SHARP }}
+            />
+          </span>
+        </motion.li>
+      ))}
+    </ol>
+  );
+}
+
+/* ---------- Sliding segmented control & Toggle ---------- */
 
 export function SegmentedControl<T extends string>({
   label,
@@ -279,7 +377,7 @@ export function SegmentedControl<T extends string>({
               <motion.span
                 layoutId={layoutId}
                 className="segmented-pill"
-                transition={{ type: 'spring', stiffness: 420, damping: 34 }}
+                transition={{ type: 'spring', stiffness: 460, damping: 36 }}
               />
             )}
             <span className="segmented-label">{option.label}</span>
@@ -305,7 +403,7 @@ export function ToggleSwitch({
         <motion.span
           layout
           className="switch-thumb"
-          transition={{ type: 'spring', stiffness: 500, damping: 32 }}
+          transition={{ type: 'spring', stiffness: 520, damping: 34 }}
         />
       </span>
       <span>{children}</span>
@@ -330,10 +428,10 @@ export function MorphPill({
         <motion.span
           key={keyValue}
           className={`pill ${tone}`}
-          initial={{ y: 10, opacity: 0, filter: 'blur(4px)' }}
-          animate={{ y: 0, opacity: 1, filter: 'blur(0px)' }}
-          exit={{ y: -10, opacity: 0, filter: 'blur(4px)' }}
-          transition={{ duration: 0.35, ease: EASE_OUT_EXPO }}
+          initial={{ y: 8, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ y: -8, opacity: 0 }}
+          transition={{ duration: 0.28, ease: EASE_SHARP }}
         >
           {children}
         </motion.span>
@@ -342,7 +440,7 @@ export function MorphPill({
   );
 }
 
-/* ---------- Animated alert (height + fade) ---------- */
+/* ---------- Animated alert ---------- */
 
 export function AnimatedAlert({
   message,
@@ -358,10 +456,10 @@ export function AnimatedAlert({
       {message && (
         <motion.div
           key={message}
-          initial={{ opacity: 0, height: 0, y: -6 }}
+          initial={{ opacity: 0, height: 0, y: -4 }}
           animate={{ opacity: 1, height: 'auto', y: 0 }}
           exit={{ opacity: 0, height: 0 }}
-          transition={{ duration: 0.3, ease: EASE_OUT_EXPO }}
+          transition={{ duration: 0.25, ease: EASE_SHARP }}
           style={{ overflow: 'hidden' }}
         >
           <div className={`alert alert-${tone}`} role={role}>
@@ -373,33 +471,52 @@ export function AnimatedAlert({
   );
 }
 
-/* ---------- Voice visuals ---------- */
+/* ---------- Voice Spectrum Visualizer ---------- */
 
-export function VoiceWave({ active, bars = 28 }: { active: boolean; bars?: number }) {
+export function VoiceWave({
+  active,
+  levels,
+  bars = 24,
+}: {
+  active: boolean;
+  levels?: number[];
+  bars?: number;
+}) {
   const heights = useMemo(
-    () => Array.from({ length: bars }, (_, i) => 0.3 + ((Math.sin(i * 1.7) + 1) / 2) * 0.7),
+    () => Array.from({ length: bars }, (_, i) => 0.28 + ((Math.sin(i * 1.45) + 1) / 2) * 0.72),
     [bars],
   );
 
   return (
     <div className={`voice-wave ${active ? 'is-active' : ''}`} aria-hidden="true">
-      {heights.map((h, i) => (
-        <motion.span
-          key={i}
-          className="voice-bar"
-          animate={active ? { scaleY: [0.2, h, 0.35, h * 0.8, 0.2] } : { scaleY: 0.12 }}
-          transition={
-            active
-              ? {
-                  duration: 1.1 + (i % 5) * 0.12,
-                  repeat: Infinity,
-                  ease: 'easeInOut',
-                  delay: i * 0.035,
-                }
-              : { duration: 0.3 }
-          }
-        />
-      ))}
+      {heights.map((h, i) => {
+        const liveLevel = levels && levels.length > 0 ? levels[i % levels.length] : null;
+        return (
+          <motion.span
+            key={i}
+            className="voice-bar"
+            animate={
+              liveLevel !== null && active
+                ? { scaleY: liveLevel }
+                : active
+                  ? { scaleY: [0.22, h, 0.3, h * 0.85, 0.22] }
+                  : { scaleY: 0.14 }
+            }
+            transition={
+              liveLevel !== null && active
+                ? { duration: 0.08, ease: 'linear' }
+                : active
+                  ? {
+                      duration: 0.9 + (i % 4) * 0.12,
+                      repeat: Infinity,
+                      ease: 'easeInOut',
+                      delay: i * 0.025,
+                    }
+                  : { duration: 0.25 }
+            }
+          />
+        );
+      })}
     </div>
   );
 }
@@ -408,15 +525,15 @@ export function PulseRings({ active }: { active: boolean }) {
   return (
     <AnimatePresence>
       {active &&
-        [0, 1, 2].map((i) => (
+        [0, 1].map((i) => (
           <motion.span
             key={i}
             className="pulse-ring"
             aria-hidden="true"
-            initial={{ scale: 0.9, opacity: 0.6 }}
-            animate={{ scale: 1.8, opacity: 0 }}
+            initial={{ scale: 0.96, opacity: 0.7 }}
+            animate={{ scale: 1.24, opacity: 0 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 2, repeat: Infinity, delay: i * 0.6, ease: 'easeOut' }}
+            transition={{ duration: 1.4, repeat: Infinity, delay: i * 0.55, ease: 'easeOut' }}
           />
         ))}
     </AnimatePresence>
@@ -427,19 +544,19 @@ export function PulseRings({ active }: { active: boolean }) {
 
 const BURST_COLORS = ['#597C80', '#9E5C55', '#F2E9E7', '#8FB4B8'];
 
-export function ParticleBurst({ trigger, count = 22 }: { trigger: number; count?: number }) {
+export function ParticleBurst({ trigger, count = 18 }: { trigger: number; count?: number }) {
   const reduce = useReducedMotion();
   const particles = useMemo(
     () =>
       Array.from({ length: count }, (_, i) => {
         const angle = (i / count) * Math.PI * 2;
-        const distance = 70 + (i % 4) * 24;
+        const distance = 60 + (i % 3) * 24;
         return {
           x: Math.cos(angle) * distance,
           y: Math.sin(angle) * distance,
           color: BURST_COLORS[i % BURST_COLORS.length],
-          size: 5 + (i % 3) * 3,
-          rotate: (i * 47) % 360,
+          size: 4 + (i % 3) * 2,
+          rotate: (i * 45) % 360,
         };
       }),
     [count],
@@ -458,14 +575,14 @@ export function ParticleBurst({ trigger, count = 22 }: { trigger: number; count?
           style={{ background: p.color, width: p.size, height: p.size }}
           initial={{ x: 0, y: 0, opacity: 1, scale: 0.4, rotate: 0 }}
           animate={{ x: p.x, y: p.y, opacity: 0, scale: 1, rotate: p.rotate }}
-          transition={{ duration: 0.95, ease: [0.16, 1, 0.3, 1] }}
+          transition={{ duration: 0.8, ease: EASE_SHARP }}
         />
       ))}
     </span>
   );
 }
 
-export function CheckDraw({ size = 44 }: { size?: number }) {
+export function CheckDraw({ size = 40 }: { size?: number }) {
   return (
     <motion.svg
       width={size}
@@ -473,80 +590,43 @@ export function CheckDraw({ size = 44 }: { size?: number }) {
       viewBox="0 0 52 52"
       aria-hidden="true"
       className="check-draw"
-      initial={{ scale: 0.6, opacity: 0 }}
+      initial={{ scale: 0.7, opacity: 0 }}
       animate={{ scale: 1, opacity: 1 }}
-      transition={{ type: 'spring', stiffness: 260, damping: 18 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 20 }}
     >
-      <motion.circle
-        cx="26"
-        cy="26"
-        r="24"
+      <motion.rect
+        x="4"
+        y="4"
+        width="44"
+        height="44"
+        rx="6"
         fill="none"
         stroke="currentColor"
         strokeWidth="3"
         initial={{ pathLength: 0 }}
         animate={{ pathLength: 1 }}
-        transition={{ duration: 0.6, ease: 'easeOut' }}
+        transition={{ duration: 0.45, ease: 'easeOut' }}
       />
       <motion.path
         d="M15 27 l7 7 l15 -16"
         fill="none"
         stroke="currentColor"
-        strokeWidth="4"
+        strokeWidth="3.5"
         strokeLinecap="round"
         strokeLinejoin="round"
         initial={{ pathLength: 0 }}
         animate={{ pathLength: 1 }}
-        transition={{ duration: 0.45, delay: 0.45, ease: 'easeOut' }}
+        transition={{ duration: 0.35, delay: 0.35, ease: 'easeOut' }}
       />
     </motion.svg>
   );
 }
 
-/* ---------- Ambient layers (Awwwards / Lando-style) ---------- */
-
-export function AuroraBackground() {
-  return (
-    <div className="aurora" aria-hidden="true">
-      <span className="aurora-blob aurora-blob-a" />
-      <span className="aurora-blob aurora-blob-b" />
-      <span className="aurora-blob aurora-blob-c" />
-      <span className="grain" />
-    </div>
-  );
-}
-
-export function CursorGlow() {
-  const reduce = useReducedMotion();
-  const x = useMotionValue(-600);
-  const y = useMotionValue(-600);
-  const sx = useSpring(x, { stiffness: 120, damping: 22 });
-  const sy = useSpring(y, { stiffness: 120, damping: 22 });
-
-  useEffect(() => {
-    if (reduce) {
-      return;
-    }
-    const handleMove = (event: PointerEvent) => {
-      if (event.pointerType !== 'mouse') {
-        return;
-      }
-      x.set(event.clientX);
-      y.set(event.clientY);
-    };
-    window.addEventListener('pointermove', handleMove, { passive: true });
-    return () => window.removeEventListener('pointermove', handleMove);
-  }, [reduce, x, y]);
-
-  if (reduce) {
-    return null;
-  }
-  return <motion.div className="cursor-glow" aria-hidden="true" style={{ x: sx, y: sy }} />;
-}
+/* ---------- Marquee ---------- */
 
 export function Marquee({ items, speed = 38 }: { items: string[]; speed?: number }) {
   const [paused, setPaused] = useState(false);
-  const content = `${items.join('  ✦  ')}  ✦  `;
+  const content = `${items.join('  //  ')}  //  `;
   return (
     <div className="marquee">
       <button
@@ -570,8 +650,8 @@ export function Marquee({ items, speed = 38 }: { items: string[]; speed?: number
 }
 
 export const fadeSwap = {
-  initial: { opacity: 0, y: 12, filter: 'blur(6px)' },
-  animate: { opacity: 1, y: 0, filter: 'blur(0px)' },
-  exit: { opacity: 0, y: -8, filter: 'blur(6px)' },
-  transition: { duration: 0.35, ease: EASE_OUT_EXPO },
+  initial: { opacity: 0, y: 10 },
+  animate: { opacity: 1, y: 0 },
+  exit: { opacity: 0, y: -8 },
+  transition: { duration: 0.28, ease: EASE_SHARP },
 } as const;

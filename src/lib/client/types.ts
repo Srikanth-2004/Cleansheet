@@ -2,6 +2,29 @@ export type Role = 'coach' | 'parent';
 export type Locale = 'hi-IN' | 'kn-IN';
 export type FeeStatus = 'unpaid' | 'processing' | 'paid';
 
+export type SubscriptionStatus =
+  | 'authorising'
+  | 'active'
+  | 'cancel_pending'
+  | 'cancelled'
+  | 'needs_review';
+
+export type CycleStatus =
+  | 'awaiting_decision'
+  | 'decision_recorded'
+  | 'charge_scheduled'
+  | 'processing'
+  | 'paid'
+  | 'failed'
+  | 'recovery_available'
+  | 'closed'
+  | 'needs_review';
+
+export type ParentDecision = 'keep' | 'cancel_subscription';
+export type ContactStatus = 'unverified' | 'pending' | 'verified' | 'blocked';
+export type OutreachConsent = 'granted' | 'withheld';
+export type RefundStatus = 'requested' | 'processing' | 'refunded' | 'failed';
+
 export interface ApiSuccess<T> {
   ok: true;
   data: T;
@@ -51,6 +74,7 @@ export interface RazPreviewData {
     period: string;
     amountPaise: number;
   };
+  mcpSummary?: CoachSummaryData;
 }
 
 export interface CreateFeeData {
@@ -67,6 +91,69 @@ export interface CheckoutSessionData {
 export interface VerifyOrderData {
   feeId: string;
   feeStatus: FeeStatus;
+}
+
+export interface ParentBillingData {
+  subscription: { id: string; status: SubscriptionStatus; nextDueAt: string | null } | null;
+  cycle: {
+    id: string;
+    period: string;
+    amountPaise: number;
+    dueAt: string;
+    status: CycleStatus;
+    recoveryUrl: string | null;
+  } | null;
+  contactStatus: ContactStatus;
+  outreachConsent: OutreachConsent;
+}
+
+export interface ContactStartData {
+  challengeId: string;
+  maskedPhone: string;
+  expiresAt: string;
+}
+
+export interface ContactVerifyData {
+  contactStatus: ContactStatus;
+  maskedPhone: string;
+}
+
+export interface OutreachConsentData {
+  outreachConsent: OutreachConsent;
+}
+
+export interface SubscriptionEnrolData {
+  subscriptionId: string;
+  mandateUrl: string;
+  status: SubscriptionStatus;
+}
+
+export interface CycleDecisionData {
+  cycleStatus: CycleStatus;
+  subscriptionStatus: SubscriptionStatus;
+}
+
+export interface CoachNotification {
+  id: string;
+  kind: 'payment_succeeded' | 'subscription_cancelled' | 'refund_approved';
+  occurredAt: string;
+  subjectLabel: string;
+  amountPaise?: number;
+}
+
+export interface CoachNotificationsData {
+  notifications: CoachNotification[];
+}
+
+export interface RefundCaseView {
+  caseId: string;
+  refundId: string | null;
+  status: RefundStatus;
+  amountPaise: number | null;
+}
+
+export interface CoachRefundsData {
+  refunds: RefundCaseView[];
 }
 
 export const DEFAULT_DEMO_PERIOD =

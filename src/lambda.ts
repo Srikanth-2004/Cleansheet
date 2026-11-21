@@ -91,8 +91,15 @@ async function handleApi(
       return success({ outreachConsent: await makeBillingStore().recordOutreachConsent(actor, granted, consentVersion) });
     }
     case 'POST /api/raz/fee-preview': {
-      await getActor(event, store, 'coach');
+      const actor = await getActor(event, store, 'coach');
       const contentType = readHeader(event.headers, 'content-type') ?? '';
+      const readMcpSummary = async (period: string) => {
+        try {
+          return await getCoachFeeSummaryViaMcp(actor, store, period);
+        } catch {
+          return undefined;
+        }
+      };
       if (contentType.toLowerCase().includes('multipart/form-data')) {
         if (!event.body) {
           throw new HttpError(400, 'MISSING_AUDIO', 'Audio upload body is required.');
@@ -126,6 +133,7 @@ async function handleApi(
         const audioBuffer = Buffer.from(await audio.arrayBuffer());
         const fileName = audio instanceof File && audio.name ? audio.name : 'raz-command.webm';
         try {
+          const feeSummary = await readMcpSummary(validPeriod);
           return success(
             await makeRazPreview({
               audioBuffer,
@@ -133,6 +141,7 @@ async function handleApi(
               mimeType: audio.type || 'audio/webm',
               locale,
               period: validPeriod,
+              feeSummary,
             }),
           );
         } catch (error) {
@@ -152,7 +161,8 @@ async function handleApi(
       }
       const validPeriod = readPeriod(period);
       try {
-        return success(await makeRazPreview({ text, locale, period: validPeriod }));
+        const feeSummary = await readMcpSummary(validPeriod);
+        return success(await makeRazPreview({ text, locale, period: validPeriod, feeSummary }));
       } catch (error) {
         if (error instanceof SarvamProviderError) {
           throw new HttpError(error.status, error.code, error.message);
