@@ -1,19 +1,55 @@
-import { generateRazFeePreview, isSupportedLocale, isValidPeriod, SarvamProviderError, transcribeWithSaarasV4, type FeeSummaryContext } from '../providers/sarvam.js';
+import type { PaidFee } from '../../contracts/billing.js';
+import { generateRazFeePreview, isSupportedLocale, isValidPeriod, SarvamProviderError, transcribeWithSaarasV4, type FeeSummaryContext, type RazPreviewResult } from '../providers/sarvam.js';
 import { HttpError, parseObject } from './http.js';
 
 const maxAudioBytes = 10 * 1024 * 1024;
 type VoiceRequest = { contentType?: string; rawBody?: Buffer; body?: unknown };
 
+export type RazReply = RazPreviewResult | { kind: 'payments'; transcript: string; answer: string; payments: PaidFee[] };
+
+export function isPaidFeeQuestion(text: string): boolean {
+  const question = text.toLowerCase().normalize('NFKC');
+  return (/कितन[ेीा]|कौन|किसने|किस किस/.test(question) && /भुगतान|फीस|फ़ीस|शुल्क|पेमेंट/.test(question) && /भरी|भरे|भुगतान|जमा|चुक|दी|दिए|दिया|किया|पे की/.test(question))
+    || (/ಎಷ್ಟು|ಯಾರು/.test(question) && /ಪಾವತಿ|ಕಟ್ಟಿದ|ಶುಲ್ಕ/.test(question))
+    || (/\b(how many|who|which)\b/.test(question) && /\bpaid\b|\b(made|completed)\b.*\bpayments?\b/.test(question))
+    || (/\b(kitne|kitni|kaun|kisne)\b/.test(question) && /\b(fees?|payment)\b/.test(question) && /\b(paid|pay|bhari|jama|di)\b/.test(question));
+}
+
+function answerPaidFeeQuestion(transcript: string, locale: string, payments: PaidFee[]): RazReply {
+  const count = payments.length;
+  const names = payments.map(payment => payment.playerName).join(', ');
+  const hindi = /\p{Script=Devanagari}/u.test(transcript) || /\b(kitne|kitni|kaun|kisne)\b/i.test(transcript);
+  const kannada = /\p{Script=Kannada}/u.test(transcript);
+  const answer = hindi
+    ? count ? `इस महीने ${count} खिलाड़ियों ने फीस भरी है। भुगतान करने वाले: ${names}।` : 'इस महीने किसी खिलाड़ी की फीस का भुगतान दर्ज नहीं है।'
+    : kannada
+      ? count ? `ಈ ತಿಂಗಳು ${count} ಆಟಗಾರರು ಶುಲ್ಕ ಪಾವತಿಸಿದ್ದಾರೆ: ${names}.` : 'ಈ ತಿಂಗಳು ಯಾವುದೇ ಆಟಗಾರರ ಶುಲ್ಕ ಪಾವತಿ ದಾಖಲಾಗಿಲ್ಲ.'
+      : count ? `${new Intl.NumberFormat(locale).format(count)} ${count === 1 ? 'player has' : 'players have'} paid for this month: ${names}.` : 'No players have a verified fee payment for this month.';
+  return { kind: 'payments', transcript, answer, payments };
+}
+
 export async function previewRazFee(
   request: VoiceRequest,
   getApiKey: () => Promise<string>,
   getFeeSummary?: (period: string) => Promise<FeeSummaryContext>,
-) {
+  getPaidFees?: (period: string) => Promise<{ payments: PaidFee[] }>,
+): Promise<RazReply> {
   const input = await parsePreview(request);
   try {
-    const apiKey = await getApiKey();
+    let apiKey: string | undefined;
+    let transcript = input.text ?? '';
+    if (input.audio) {
+      apiKey = await getApiKey();
+      transcript = await transcribeWithSaarasV4({
+        ...input.audio, locale: input.locale,
+      }, apiKey);
+    }
+    if (getPaidFees && isPaidFeeQuestion(transcript)) {
+      return answerPaidFeeQuestion(transcript, input.locale, (await getPaidFees(input.period)).payments);
+    }
+    apiKey ??= await getApiKey();
     const feeSummary = await getFeeSummary?.(input.period);
-    return await generateRazFeePreview({ ...input, feeSummary }, apiKey);
+    return await generateRazFeePreview({ text: transcript, period: input.period, locale: input.locale, feeSummary }, apiKey);
   } catch (error) {
     if (error instanceof SarvamProviderError) {
       const providerError = error.status >= 500 ? 'Sarvam could not produce a fee preview.' : error.message;
@@ -83,6 +119,6 @@ async function parsePreview({ contentType, rawBody, body }: VoiceRequest) {
   return {
     locale, period,
     ...(typeof text === 'string' ? { text } : {}),
-    ...(audio ? { audioBuffer: Buffer.from(await audio.arrayBuffer()), fileName: audio.name, mimeType: audio.type } : {}),
+    audio: audio ? { audioBuffer: Buffer.from(await audio.arrayBuffer()), fileName: audio.name, mimeType: audio.type } : undefined,
   };
 }

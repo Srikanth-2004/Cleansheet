@@ -118,6 +118,7 @@ export function AppHeader({
                 </Link>
               );
             })}
+            {fixtureMode && <Link href="/cashfree-hits" className="nav-link">Cashfree hits</Link>}
           </nav>
 
           {!fixtureMode && userEmail && onSignOut && (

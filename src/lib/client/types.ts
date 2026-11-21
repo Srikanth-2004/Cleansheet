@@ -68,7 +68,7 @@ export interface ParentFeesData {
   fees: ParentFee[];
 }
 
-export interface RazPreviewData {
+export interface RazFeeProposal {
   transcript: string;
   preview: {
     period: string;
@@ -76,6 +76,13 @@ export interface RazPreviewData {
   };
   mcpSummary?: CoachSummaryData;
 }
+
+export type RazPreviewData = RazFeeProposal | {
+  kind: 'payments';
+  transcript: string;
+  answer: string;
+  payments: CoachPaidFee[];
+};
 
 export interface CreateFeeData {
   feeId: string;

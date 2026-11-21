@@ -175,17 +175,7 @@ export async function previewRazFee(input: {
     );
   };
 
-  const liveResult = await callLiveSarvam();
-  if (
-    fixtureMode &&
-    !liveResult.ok &&
-    (liveResult.error.code === 'SARVAM_NOT_CONFIGURED' ||
-      liveResult.error.code === 'NETWORK_ERROR')
-  ) {
-    return fixtureRazFeePreview(input);
-  }
-
-  return liveResult;
+  return callLiveSarvam();
 }
 
 export async function confirmCoachFee(input: {

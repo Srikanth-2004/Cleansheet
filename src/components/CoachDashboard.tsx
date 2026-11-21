@@ -27,6 +27,7 @@ import {
   LOCALE_OPTIONS,
   type Locale,
   type MeData,
+  type RazFeeProposal,
   type RazPreviewData,
   type RefundCaseView,
 } from '@/lib/client/types';
@@ -86,7 +87,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
   const [lastAudioMeta, setLastAudioMeta] = useState<string>('');
 
   const [previewBusy, setPreviewBusy] = useState<boolean>(false);
-  const [previewResult, setPreviewResult] = useState<RazPreviewData | null>(null);
+  const [previewResult, setPreviewResult] = useState<RazFeeProposal | null>(null);
   const [confirmBusy, setConfirmBusy] = useState<boolean>(false);
   const [confirmedFee, setConfirmedFee] = useState<CreateFeeData | null>(null);
   const [confirmBurstCount, setConfirmBurstCount] = useState<number>(0);
@@ -97,6 +98,18 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
 
   const recorderRef = useRef<BrowserAudioRecorder | null>(null);
   const timerRef = useRef<number | null>(null);
+
+  function showRazReply(reply: RazPreviewData, previewMessage: string) {
+    if ('kind' in reply) {
+      setPreviewResult(null);
+      setPayments(reply.payments);
+      setPaymentListError(false);
+      setStatusMessage(reply.answer);
+      return;
+    }
+    setPreviewResult(reply);
+    setStatusMessage(previewMessage);
+  }
 
   const selectedLocaleMeta =
     LOCALE_OPTIONS.find((item) => item.value === locale) ?? LOCALE_OPTIONS[0];
@@ -205,10 +218,7 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
         period,
       });
       if (res.ok) {
-        setPreviewResult(res.data);
-        setStatusMessage(
-          'Raz prepared a fee preview from your voice command. Zero fee records created yet — review and confirm.',
-        );
+        showRazReply(res.data, 'Raz prepared a fee preview from your voice command. Review and confirm it below.');
       } else {
         setPreviewResult(null);
         setErrorMessage(`${res.error.code}: ${res.error.message}`);
@@ -242,17 +252,14 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
     setPreviewBusy(false);
 
     if (res.ok) {
-      setPreviewResult(res.data);
-      setStatusMessage(
-        'Raz prepared a fee preview from the sample voice clip. Zero fee records created yet.',
-      );
+      showRazReply(res.data, 'Demo fee preview from the sample clip is ready.');
     } else {
       setPreviewResult(null);
       setErrorMessage(`${res.error.code}: ${res.error.message}`);
     }
   }
 
-  async function submitTypedCommand() {
+  async function submitTypedCommand(fixtureOnly = false) {
     setErrorMessage('');
     setStatusMessage('');
     setConfirmedFee(null);
@@ -262,14 +269,12 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
       text: commandText,
       locale,
       period,
+      fixtureOnly,
     });
     setPreviewBusy(false);
 
     if (res.ok) {
-      setPreviewResult(res.data);
-      setStatusMessage(
-        'Raz prepared a fee preview from typed input. Zero fee records created yet — confirm below.',
-      );
+      showRazReply(res.data, fixtureOnly ? 'Demo fee preview ready. Confirm it below.' : 'Raz prepared a fee preview from typed input. Confirm it below.');
     } else {
       setPreviewResult(null);
       setErrorMessage(`${res.error.code}: ${res.error.message}`);
@@ -629,6 +634,16 @@ export function CoachDashboard({ me, fixtureMode, refreshSignal = 0 }: CoachDash
               >
                 Use Sample {selectedLocaleMeta.label} Phrase
               </MagneticButton>
+              {fixtureMode && (
+                <MagneticButton
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={previewBusy || isRecording}
+                  onClick={() => void submitTypedCommand(true)}
+                >
+                  Preview Demo Fee
+                </MagneticButton>
+              )}
             </div>
           </form>
 

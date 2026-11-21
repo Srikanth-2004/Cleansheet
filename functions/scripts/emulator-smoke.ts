@@ -107,6 +107,8 @@ assert.equal((await request(summaryPath, 200, unrelatedCoach.token)).expectedPai
 assert.equal((await request(`api/api/parent/fees?period=${period}`, 200, parent.token)).fees[0].status, 'unpaid');
 await request(`api/api/fees/${feeId}/checkout`, 403, coach.token, {});
 await request(`api/api/fees/${feeId}/checkout`, 503, parent.token, {});
+const hits = (await request('api/api/local/cashfree-hits', 200)).hits;
+assert.ok(hits.some((hit: { event: string; reason?: string }) => hit.event === 'provider_skipped' && hit.reason));
 const feeStore = createFeeStore(records);
 const { orderId } = await feeStore.reserveCheckout(parent.uid, feeId);
 assert.equal((await feeStore.reserveCheckout(parent.uid, feeId)).orderId, orderId);
@@ -129,6 +131,13 @@ const paidList = `api/api/coach/payments?period=${period}`;
 assert.equal((await request(paidList, 200, coach.token)).payments.find((item: { feeId: string }) => item.feeId === feeId)?.amountPaise, amountPaise);
 assert.deepEqual((await request(paidList, 200, unrelatedCoach.token)).payments, []);
 await request(paidList, 403, parent.token);
+const paymentQuestion = { text: 'कितने लोगों ने फीस भरी है?', locale: 'hi-IN', period };
+const hindiAnswer = await request('api/api/raz/fee-preview', 200, coach.token, paymentQuestion);
+assert.equal(hindiAnswer.kind, 'payments');
+assert.match(hindiAnswer.answer, /1 खिलाड़ियों.*Demo Player/);
+assert.equal(hindiAnswer.payments.length, 1);
+assert.deepEqual((await request('api/api/raz/fee-preview', 200, unrelatedCoach.token, paymentQuestion)).payments, []);
+await request('api/api/raz/fee-preview', 403, parent.token, paymentQuestion);
 
 const caseId = `refund-${suffix}`;
 const refundAmount = 20_000;

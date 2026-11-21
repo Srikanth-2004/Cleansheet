@@ -12,7 +12,7 @@ import { createCashfreeSubscriptions, enrolSubscription, prepareSubscriptionCycl
 import { applyCashfreeWebhook, verifiedCashfreeBody } from './lib/server/cashfree-webhooks.js';
 import { createContactVerification, createSecureIdSandboxProvider } from './lib/server/contact-verification.js';
 import { createFeeStore } from './lib/server/fee-store.js';
-import { getCoachFeeSummaryViaMcp } from './lib/server/fee-mcp.js';
+import { getCoachFeeSummaryViaMcp, getCoachPaidFeesViaMcp } from './lib/server/fee-mcp.js';
 import { cleanSheetRecords } from './lib/server/firestore.js';
 import { HttpError, json, parseObject, success } from './lib/server/http.js';
 import { createRefundStore } from './lib/server/refund-store.js';
@@ -46,7 +46,7 @@ async function providerSecret(variable: string, code: string, label: string) {
   if (localSecret) return localSecret;
   const secret = process.env[variable] ?? '';
   if (!/^projects\/[a-zA-Z0-9_-]+\/secrets\/[a-zA-Z0-9_-]+\/versions\/(latest|[1-9][0-9]*)$/.test(secret)) {
-    logProviderBlocked(provider, code);
+    await logProviderBlocked(provider, code);
     throw new HttpError(503, code, `${label} is not configured.`);
   }
   try {
@@ -62,7 +62,7 @@ async function providerSecret(variable: string, code: string, label: string) {
   } catch {
     // Do not include secret contents or upstream errors in the browser response.
   }
-  logProviderBlocked(provider, 'credentials_unavailable');
+  await logProviderBlocked(provider, 'credentials_unavailable');
   throw new HttpError(503, code, `${label} credentials are unavailable.`);
 }
 
@@ -76,7 +76,7 @@ async function providerCredentials(variable: string, code: string, label: string
   } catch {
     // Keep misconfigured secret values out of the response.
   }
-  logProviderBlocked('cashfree', 'credentials_invalid');
+  await logProviderBlocked('cashfree', 'credentials_invalid');
   throw new HttpError(503, code, `${label} credentials are unavailable.`);
 }
 
@@ -93,7 +93,7 @@ function respond(
   functionName: 'api' | 'billingEvents' | 'billingOperations', req: Request,
   res: ResponseWriter, operation: () => Promise<ReturnType<typeof json>>,
 ) {
-  return observeRequest(functionName, async requestId => {
+  return observeRequest(functionName, req.path, async requestId => {
     const startedAt = performance.now();
     let result;
     let errorCode: string | undefined;
@@ -108,9 +108,9 @@ function respond(
         result = json(500, { ok: false, error: { code: errorCode, message: 'The request could not be completed.' } });
       }
     }
-    logRequest(req.method, req.path, result.status, startedAt, errorCode);
+    logRequest(req.method, result.status, startedAt, errorCode);
     res.set({ 'Cache-Control': 'no-store', 'X-Request-Id': requestId }).status(result.status).json(result.body);
-  });
+  }, localDemo ? event => cleanSheetRecords().collection('cashfreeHits').add(event) : undefined);
 }
 
 export const api = onRequest({ region, invoker: 'public', cors: cors.length ? cors : false, maxInstances: 5 }, (req: Request, res) =>
@@ -119,6 +119,11 @@ export const api = onRequest({ region, invoker: 'public', cors: cors.length ? co
     if (!req.path.startsWith('/api/')) throw new HttpError(404, 'ROUTE_NOT_FOUND', 'This route is not available.');
     const records = cleanSheetRecords();
     const fees = createFeeStore(records);
+    if (req.method === 'GET' && req.path === '/api/local/cashfree-hits') {
+      if (!localDemo) throw new HttpError(404, 'ROUTE_NOT_FOUND', 'This route is not available.');
+      const snapshot = await records.collection('cashfreeHits').orderBy('recordedAt', 'desc').limit(40).get();
+      return success({ hits: snapshot.docs.map(document => document.data()) });
+    }
     const localPreview = localDemo && req.method === 'POST' && req.path === '/api/raz/fee-preview'
       && req.get('authorization') === 'Bearer fixture-coach-token';
     const localAnswer = localDemo && req.method === 'POST' && req.path === '/api/parent/billing/cancellation-answer'
@@ -145,7 +150,7 @@ export const api = onRequest({ region, invoker: 'public', cors: cors.length ? co
       approveOutreach: (actor, actionId) => approveRelayAction(records, actor, actionId),
       previewRazFee: (request, actor) => previewRazFee(request, () => providerSecret(
         'CLEANSHEET_SARVAM_SECRET', 'SARVAM_NOT_CONFIGURED', 'Sarvam',
-      ), period => getCoachFeeSummaryViaMcp(actor, fees, period)),
+      ), period => getCoachFeeSummaryViaMcp(actor, fees, period), period => getCoachPaidFeesViaMcp(actor, fees, period)),
       recognizeCancellationAnswer: request => recognizeCancellationAnswer(request, () => providerSecret(
         'CLEANSHEET_SARVAM_SECRET', 'SARVAM_NOT_CONFIGURED', 'Sarvam',
       )),

@@ -34,30 +34,35 @@ function preferredLanguage(): PromptLocale {
   return 'en-IN';
 }
 
-function speak(locale: PromptLocale) {
-  if (!('speechSynthesis' in window)) return;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(prompts[locale].question);
-  utterance.lang = locale;
-  const voice = window.speechSynthesis.getVoices().find(item => item.lang.startsWith(locale.slice(0, 2)));
-  if (voice) utterance.voice = voice;
-  window.speechSynthesis.speak(utterance);
-}
-
 export function ParentCancellationPrompt({ onConfirm, onKeep }: { onConfirm(): void; onKeep(): void }) {
   const [locale, setLocale] = useState<PromptLocale>(preferredLanguage);
   const [recording, setRecording] = useState<'idle' | 'starting' | 'recording' | 'checking'>('idle');
   const [message, setMessage] = useState('');
+  const [playbackError, setPlaybackError] = useState(false);
   const audio = useRef<BrowserAudioRecorder | null>(null);
+  const player = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    speak(preferredLanguage());
+    const promptPlayer = player.current;
+    void promptPlayer?.play().catch(() => {});
     return () => {
       audio.current?.cancel();
       audio.current = null;
-      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+      promptPlayer?.pause();
     };
   }, []);
+
+  function playPrompt(language: PromptLocale) {
+    const promptPlayer = player.current;
+    if (!promptPlayer) return;
+    setPlaybackError(false);
+    const source = `/voice/cancel-${language}.wav`;
+    if (promptPlayer.getAttribute('src') !== source) promptPlayer.setAttribute('src', source);
+    else promptPlayer.currentTime = 0;
+    void promptPlayer.play().catch(error => {
+      if (error.name !== 'AbortError') setPlaybackError(true);
+    });
+  }
 
   async function recordAnswer() {
     if (recording === 'recording') {
@@ -81,7 +86,7 @@ export function ParentCancellationPrompt({ onConfirm, onKeep }: { onConfirm(): v
     }
     setMessage('');
     setRecording('starting');
-    if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    player.current?.pause();
     const recorder = createAudioRecorder();
     audio.current = recorder;
     try {
@@ -108,18 +113,20 @@ export function ParentCancellationPrompt({ onConfirm, onKeep }: { onConfirm(): v
           const selected = event.target.value as PromptLocale;
           setLocale(selected);
           window.localStorage.setItem(languageKey, selected);
-          speak(selected);
+          playPrompt(selected);
         }}
       >
         {(Object.keys(prompts) as PromptLocale[]).map(option => <option key={option} value={option}>{prompts[option].language}</option>)}
       </select>
+      <audio ref={player} src={`/voice/cancel-${locale}.wav`} preload="auto" />
       <p lang={locale}>{prompt.question}</p>
       <div className="button-row">
-        <button type="button" className="btn btn-secondary" onClick={() => speak(locale)} disabled={recording !== 'idle'}>Play prompt</button>
+        <button type="button" className="btn btn-secondary" onClick={() => playPrompt(locale)} disabled={recording !== 'idle'}>Play prompt</button>
         <button type="button" className="btn btn-secondary" onClick={() => void recordAnswer()} disabled={recording === 'starting' || recording === 'checking'}>
           {recording === 'recording' ? 'Stop and check answer' : recording === 'checking' ? 'Checking answer…' : 'Record Yes or No'}
         </button>
       </div>
+      {playbackError && <p role="status">Prompt audio is unavailable. Read the question above and select Yes or No.</p>}
       {message && <p role="status">{message}</p>}
       <div className="button-row">
         <button type="button" className="btn btn-terracotta" lang={locale} onClick={onConfirm}>{prompt.yes}</button>

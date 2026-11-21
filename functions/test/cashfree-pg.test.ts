@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { Checkout } from '../src/contracts/billing.js';
 import { createCashfreeSandbox } from '../src/lib/server/cashfree-pg.js';
+import { observeRequest } from '../src/lib/server/observability.js';
 
 const checkout: Checkout = {
   feeId: 'player-2026-11', orderId: 'cs-demo', amountPaise: 1_501, currency: 'INR',
@@ -32,4 +33,23 @@ test('Cashfree verification requires a matching paid order and exactly one match
   assert.equal(await gateway([], 'ACTIVE').findSuccessfulPayment(checkout), undefined);
   await assert.rejects(gateway([paid, paid]).findSuccessfulPayment(checkout), { code: 'PAYMENT_MISMATCH' });
   await assert.rejects(gateway([{ ...paid, payment_amount: 15.02 }]).findSuccessfulPayment(checkout), { code: 'PAYMENT_MISMATCH' });
+});
+
+test('Cashfree activity records the HTTP response summary without retaining checkout secrets or customer data', async () => {
+  const hits: Record<string, unknown>[] = [];
+  const gateway = createCashfreeSandbox(config, async () => Response.json({
+    ...order, payment_session_id: 'private-session', customer_details: checkout.customer, status: 'PRIVATE_NAME',
+  }));
+
+  await observeRequest('api', '/api/fees/private-fee-id/checkout', async () => {
+    const session = await gateway.createCheckout(checkout);
+    assert.equal(session.paymentSessionId, 'private-session');
+  }, async hit => { hits.push(hit); });
+
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].route, '/api/fees/:feeId/checkout');
+  assert.equal(hits[0].operation, 'pg.create_order');
+  assert.equal(hits[0].status, 200);
+  assert.deepEqual(hits[0].responseSummary, { order_status: 'PAID', hasPaymentSession: true });
+  assert.doesNotMatch(JSON.stringify(hits[0]), /private-session|private-fee-id|PRIVATE_NAME|parent@example/);
 });

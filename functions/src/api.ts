@@ -5,6 +5,7 @@ import type { PaymentGateway } from './lib/server/cashfree-pg.js';
 import type { ContactVerification } from './lib/server/contact-verification.js';
 import { getCoachFeeSummaryViaMcp, getCoachPaidFeesViaMcp } from './lib/server/fee-mcp.js';
 import { HttpError, parseObject, success } from './lib/server/http.js';
+import type { RazReply } from './lib/server/raz-preview.js';
 
 export interface ApiRequest {
   method: string;
@@ -24,7 +25,7 @@ interface Services {
   getPaymentGateway(): Promise<PaymentGateway>;
   enrolSubscription(actor: Actor): Promise<unknown>;
   approveOutreach(actor: Actor, actionId: string): Promise<unknown>;
-  previewRazFee(request: ApiRequest, actor: Actor): Promise<{ transcript: string; preview: { period: string; amountPaise: number } }>;
+  previewRazFee(request: ApiRequest, actor: Actor): Promise<RazReply>;
   recognizeCancellationAnswer(request: ApiRequest): Promise<{ answer: 'yes' | 'no' | 'unknown' }>;
   verifyToken(token: string): Promise<string>;
 }
