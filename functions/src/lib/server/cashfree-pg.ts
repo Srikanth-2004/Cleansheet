@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
 import type { Checkout } from '../../contracts/billing.js';
+import { cashfreeSandboxRequest, toPaise, type CashfreeCredentials } from './cashfree-http.js';
 import { HttpError } from './http.js';
 
 export interface PaymentGateway {
@@ -7,32 +7,8 @@ export interface PaymentGateway {
   findSuccessfulPayment(checkout: Checkout): Promise<string | undefined>;
 }
 
-function uuidForOrder(orderId: string) {
-  const hex = createHash('sha256').update(orderId).digest('hex');
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-8${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
-}
-
-export function createCashfreeSandbox(config: { clientId: string; clientSecret: string }, request = fetch): PaymentGateway {
-  const { clientId, clientSecret } = config;
-  if (!clientId || !clientSecret) throw new HttpError(503, 'CASHFREE_NOT_CONFIGURED', 'Cashfree Sandbox is not configured.');
-
-  async function call<T>(path: string, body?: object, orderId?: string): Promise<T> {
-    let response: Response;
-    try {
-      response = await request(`https://sandbox.cashfree.com/pg${path}`, {
-        method: body ? 'POST' : 'GET', redirect: 'error', signal: AbortSignal.timeout(8_000),
-        headers: {
-          'Content-Type': 'application/json', 'x-api-version': '2025-01-01', 'x-client-id': clientId, 'x-client-secret': clientSecret,
-          ...(orderId ? { 'x-idempotency-key': uuidForOrder(orderId) } : {}),
-        },
-        body: body && JSON.stringify(body),
-      });
-      if (response.ok) return await response.json() as T;
-    } catch {
-      // Provider errors are kept out of the browser response.
-    }
-    throw new HttpError(502, 'CASHFREE_UNAVAILABLE', 'Cashfree Sandbox could not complete the request.');
-  }
+export function createCashfreeSandbox(config: CashfreeCredentials, request = fetch): PaymentGateway {
+  const call = cashfreeSandboxRequest('pg', '2025-01-01', config, request);
 
   return {
     async createCheckout(checkout) {
@@ -68,10 +44,4 @@ export function createCashfreeSandbox(config: { clientId: string; clientSecret: 
       return String(payment.cf_payment_id);
     },
   };
-}
-
-function toPaise(value: unknown) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
-  const paise = Math.round(value * 100);
-  return Number.isSafeInteger(paise) && paise / 100 === value ? paise : undefined;
 }

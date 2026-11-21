@@ -2,15 +2,22 @@ import { applicationDefault, initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
 import { onRequest, type Request } from 'firebase-functions/v2/https';
 import { handleApi } from './api.js';
+import { isPeriod } from './contracts/billing.js';
 import { applyIntegrationEvent } from './events.js';
 import { createBillingStore } from './lib/server/billing-store.js';
+import { isCashfreeReference } from './lib/server/cashfree-http.js';
 import { createCashfreeSandbox } from './lib/server/cashfree-pg.js';
+import { createCashfreePayouts, runApprovedPayout } from './lib/server/cashfree-payouts.js';
+import { createCashfreeSubscriptions, enrolSubscription, prepareSubscriptionCycle } from './lib/server/cashfree-subscriptions.js';
+import { applyCashfreeWebhook, verifiedCashfreeBody } from './lib/server/cashfree-webhooks.js';
 import { createContactVerification, createSecureIdSandboxProvider } from './lib/server/contact-verification.js';
 import { createFeeStore } from './lib/server/fee-store.js';
 import { cleanSheetRecords } from './lib/server/firestore.js';
-import { HttpError, json, success } from './lib/server/http.js';
+import { HttpError, json, parseObject, success } from './lib/server/http.js';
 import { createRefundStore } from './lib/server/refund-store.js';
 import { previewRazFee } from './lib/server/raz-preview.js';
+import { approveRelayAction, getRelayDashboardHandoff, recordRelayDashboardOutcome } from './lib/server/relay-handoff.js';
+import { runSubscriptionAction } from './lib/server/subscription-actions.js';
 
 initializeApp();
 
@@ -64,6 +71,12 @@ async function providerCredentials(variable: string, code: string, label: string
   throw new HttpError(503, code, `${label} credentials are unavailable.`);
 }
 
+const pgCredentials = () => providerCredentials('CLEANSHEET_CASHFREE_PG_SECRET', 'CASHFREE_NOT_CONFIGURED', 'Cashfree Sandbox');
+const subscriptionCredentials = () => process.env.CLEANSHEET_CASHFREE_SUBSCRIPTIONS_SECRET
+  ? providerCredentials('CLEANSHEET_CASHFREE_SUBSCRIPTIONS_SECRET', 'SUBSCRIPTION_NOT_CONFIGURED', 'Cashfree Subscriptions Sandbox')
+  : pgCredentials();
+const subscriptions = async () => createCashfreeSubscriptions(await subscriptionCredentials(), process.env.CLEANSHEET_SUBSCRIPTION_PLAN_ID ?? '');
+
 type ResponseWriter = Parameters<Parameters<typeof onRequest>[0]>[1];
 
 async function respond(res: ResponseWriter, operation: () => Promise<ReturnType<typeof json>>) {
@@ -86,6 +99,13 @@ export const api = onRequest({ region, invoker: 'public', cors: cors.length ? co
     if (req.method === 'GET' && req.path === '/health') return success({ service: 'cleansheet' });
     if (!req.path.startsWith('/api/')) throw new HttpError(404, 'ROUTE_NOT_FOUND', 'This route is not available.');
     const records = cleanSheetRecords();
+    const webhook = /^\/api\/webhooks\/cashfree\/(pg|subscriptions)$/.exec(req.path);
+    if (req.method === 'POST' && webhook) {
+      const product = webhook[1] === 'pg' ? 'pg' : 'subscriptions';
+      const { clientSecret } = await (product === 'pg' ? pgCredentials() : subscriptionCredentials());
+      const event = verifiedCashfreeBody(req.rawBody, req.get('x-webhook-timestamp'), req.get('x-webhook-signature'), clientSecret);
+      return success(await applyCashfreeWebhook(records, product, event));
+    }
     return handleApi({
       method: req.method, path: req.path, authorization: req.get('authorization'), period: req.query.period, body: req.body,
       contentType: req.get('content-type'), rawBody: req.rawBody,
@@ -96,9 +116,9 @@ export const api = onRequest({ region, invoker: 'public', cors: cors.length ? co
         await providerCredentials('CLEANSHEET_SECURE_ID_SECRET', 'SECURE_ID_UNAVAILABLE', 'Secure ID Sandbox'),
       )),
       makeRefundStore: () => createRefundStore(records),
-      getPaymentGateway: async () => createCashfreeSandbox(
-        await providerCredentials('CLEANSHEET_CASHFREE_PG_SECRET', 'CASHFREE_NOT_CONFIGURED', 'Cashfree Sandbox'),
-      ),
+      getPaymentGateway: async () => createCashfreeSandbox(await pgCredentials()),
+      enrolSubscription: async actor => enrolSubscription(records, actor, await subscriptions()),
+      approveOutreach: (actor, actionId) => approveRelayAction(records, actor, actionId),
       previewRazFee: request => previewRazFee(request, () => providerSecret(
         'CLEANSHEET_SARVAM_SECRET', 'SARVAM_NOT_CONFIGURED', 'Sarvam',
       )),
@@ -111,5 +131,39 @@ export const billingEvents = onRequest({ region, invoker: 'private', maxInstance
   respond(res, async () => {
     if (req.method !== 'POST' || req.path !== '/') throw new HttpError(404, 'ROUTE_NOT_FOUND', 'This route is not available.');
     return success(await applyIntegrationEvent(cleanSheetRecords(), req.body));
+  }),
+);
+
+export const billingOperations = onRequest({ region, invoker: 'private', maxInstances: 3 }, (req, res) =>
+  respond(res, async () => {
+    if (req.method !== 'POST') throw new HttpError(404, 'ROUTE_NOT_FOUND', 'This route is not available.');
+    const records = cleanSheetRecords();
+    const subscriptionAction = /^\/subscriptions\/actions\/([a-zA-Z0-9_:-]{1,160})$/.exec(req.path);
+    if (subscriptionAction) return success(await runSubscriptionAction(records, subscriptionAction[1], await subscriptions()));
+    if (req.path === '/subscriptions/cycles') {
+      const { playerId, period, dueAt, cutoffAt } = parseObject(req.body);
+      if (!isCashfreeReference(playerId) || !isPeriod(period) || typeof dueAt !== 'string' || typeof cutoffAt !== 'string'
+        || !(Date.parse(dueAt) > Date.parse(cutoffAt) && Date.parse(cutoffAt) > Date.now())) {
+        throw new HttpError(400, 'INVALID_CYCLE', 'Provide a linked player, billing month and future due and cutoff times.');
+      }
+      return success(await prepareSubscriptionCycle(records, playerId, period, new Date(dueAt).toISOString(), new Date(cutoffAt).toISOString()));
+    }
+    const payout = /^\/payouts\/([a-zA-Z0-9_-]{1,128})\/(submit|reconcile)$/.exec(req.path);
+    if (payout) {
+      const gateway = createCashfreePayouts(await providerCredentials(
+        'CLEANSHEET_CASHFREE_PAYOUTS_SECRET', 'PAYOUTS_NOT_CONFIGURED', 'Cashfree Payouts Sandbox',
+      ));
+      return success(await runApprovedPayout(records, payout[1], payout[2] === 'submit' ? 'submit' : 'reconcile', gateway));
+    }
+    const relay = /^\/relay\/([a-zA-Z0-9_:-]{1,160})\/(handoff|outcome)$/.exec(req.path);
+    if (relay) {
+      if (relay[2] === 'handoff') return success(await getRelayDashboardHandoff(records, relay[1]));
+      const { providerActionId, outcome } = parseObject(req.body);
+      if (!isCashfreeReference(providerActionId) || (outcome !== 'delivered' && outcome !== 'failed')) {
+        throw new HttpError(400, 'INVALID_RELAY_OUTCOME', 'Provide an observed Relay action reference and outcome.');
+      }
+      return success(await recordRelayDashboardOutcome(records, relay[1], providerActionId, outcome));
+    }
+    throw new HttpError(404, 'ROUTE_NOT_FOUND', 'This route is not available.');
   }),
 );

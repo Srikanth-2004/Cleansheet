@@ -22,6 +22,8 @@ interface Services {
   makeContactVerification(): Promise<ContactVerification>;
   makeRefundStore(): RefundStore;
   getPaymentGateway(): Promise<PaymentGateway>;
+  enrolSubscription(actor: Actor): Promise<unknown>;
+  approveOutreach(actor: Actor, actionId: string): Promise<unknown>;
   previewRazFee(request: ApiRequest): Promise<{ transcript: string; preview: { period: string; amountPaise: number } }>;
   verifyToken(token: string): Promise<string>;
 }
@@ -55,6 +57,8 @@ export async function handleApi(request: ApiRequest, services: Services) {
   const { fees: store, makeBillingStore, makeContactVerification, makeRefundStore, verifyToken } = services;
   const actorFor = (role?: Role) => getActor(request, store, verifyToken, role);
   const path = `${request.method} ${request.path}`;
+  const outreach = /^POST \/api\/coach\/billing\/outreach\/([a-zA-Z0-9_:-]{1,160})\/approve$/.exec(path);
+  if (outreach) return success(await services.approveOutreach(await actorFor('coach'), outreach[1]));
   const checkout = /^POST \/api\/fees\/([a-zA-Z0-9_-]{1,160})\/checkout$/.exec(path);
   if (checkout) {
     const actor = await actorFor('parent');
@@ -115,6 +119,8 @@ export async function handleApi(request: ApiRequest, services: Services) {
       const actor = await actorFor('parent');
       return success(await makeBillingStore().readParentBilling(actor));
     }
+    case 'POST /api/parent/subscription/enrol':
+      return success(await services.enrolSubscription(await actorFor('parent')));
     case 'POST /api/parent/contact/start': {
       const actor = await actorFor('parent');
       const { phone, consentVersion } = parseObject(request.body);

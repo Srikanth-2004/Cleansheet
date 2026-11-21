@@ -2,8 +2,12 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { initializeApp } from 'firebase-admin/app';
 import { getAuth } from 'firebase-admin/auth';
+import { createCashfreePayouts, runApprovedPayout } from '../src/lib/server/cashfree-payouts.js';
+import { createCashfreeSubscriptions, enrolSubscription } from '../src/lib/server/cashfree-subscriptions.js';
+import { applyCashfreeWebhook } from '../src/lib/server/cashfree-webhooks.js';
 import { createFeeStore } from '../src/lib/server/fee-store.js';
 import { cleanSheetRecords } from '../src/lib/server/firestore.js';
+import { runSubscriptionAction } from '../src/lib/server/subscription-actions.js';
 
 const projectId = 'demo-cleansheet';
 const authHost = process.env.FIREBASE_AUTH_EMULATOR_HOST;
@@ -112,7 +116,13 @@ await request('billingEvents/', 400, undefined, { ...pgEvent, type: 'unrecognise
 await request('billingEvents/', 409, undefined, { ...pgEvent, amountPaise: amountPaise + 1 });
 const settled = { feeId, feeStatus: 'paid' };
 assert.deepEqual(await request('billingEvents/', 200, undefined, pgEvent), settled);
-assert.deepEqual(await request('billingEvents/', 200, undefined, pgEvent), settled);
+assert.deepEqual(await applyCashfreeWebhook(records, 'pg', {
+  type: 'PAYMENT_SUCCESS_WEBHOOK',
+  data: {
+    order: { order_id: orderId, order_amount: amountPaise / 100, order_currency: 'INR' },
+    payment: { cf_payment_id: pgEvent.providerPaymentId, payment_amount: amountPaise / 100, payment_currency: 'INR', payment_status: 'SUCCESS' },
+  },
+}), settled);
 assert.equal((await request('api/api/coach/billing/notifications', 200, coach.token)).notifications.length, 1);
 assert.equal((await request('api/api/coach/billing/notifications', 200, unrelatedCoach.token)).notifications.length, 0);
 
@@ -133,24 +143,57 @@ assert.equal((await request('billingEvents/', 200, undefined, refundEvent)).stat
 assert.equal((await request(summaryPath, 200, coach.token)).collectedPaise, amountPaise - refundAmount);
 
 const cyclePeriod = '2026-12';
-const cycleId = `cycle-${suffix}`;
-const subscriptionId = `sub-${suffix}`;
-const providerSubscriptionId = `cf-${subscriptionId}`;
-const merchantPaymentId = `merchant-${suffix}`;
-const dueAt = new Date(Date.now() + 86_400_000).toISOString();
-await request('api/api/coach/fees', 200, coach.token, { period: cyclePeriod, amountPaise });
-await records.ref('subscriptions', playerId).create({
-  id: subscriptionId, parentUid: parent.uid, coachUid: coach.uid, currentCycleId: cycleId,
-  providerSubscriptionId, status: 'active', nextDueAt: dueAt,
+const dueAt = new Date(Date.now() + 3 * 86_400_000).toISOString();
+const cutoffAt = new Date(Date.now() + 2 * 86_400_000).toISOString();
+const credentials = { clientId: 'emulator', clientSecret: 'emulator' };
+let providerMandateId = '';
+let providerStatus = 'INITIALIZED';
+let chargeCalls = 0;
+const subscriptions = createCashfreeSubscriptions(credentials, 'mock-on-demand', async (input, init) => {
+  const path = new URL(String(input)).pathname;
+  const body = JSON.parse(String(init?.body ?? '{}'));
+  if (path.endsWith('/pay')) {
+    chargeCalls += 1;
+    return Response.json({ subscription_id: providerMandateId, payment_id: body.payment_id, payment_status: 'INITIALIZED' });
+  }
+  if (path === '/pg/subscriptions') providerMandateId = body.subscription_id;
+  if (path.endsWith('/manage')) providerStatus = 'CANCELLED';
+  return Response.json({
+    subscription_id: providerMandateId, cf_subscription_id: `cf-${suffix}`,
+    subscription_status: providerStatus, subscription_session_id: 'emulator-session',
+  });
 });
-await records.ref('cycles', cycleId).create({
-  id: cycleId, parentUid: parent.uid, playerId, providerSubscriptionId, merchantPaymentId, period: cyclePeriod,
-  amountPaise, status: 'awaiting_decision', recoveryUrl: null, dueAt, cutoffAt: dueAt,
-});
-await request(`api/api/parent/billing/cycles/${cycleId}/decision`, 200, parent.token, { decision: 'keep' });
-await assert.rejects(feeStore.reserveCheckout(parent.uid, `${playerId}-${cyclePeriod}`), { code: 'COLLECTION_IN_PROGRESS' });
+const parentActor = await feeStore.findActor(parent.uid);
+assert.ok(parentActor);
+await assert.rejects(enrolSubscription(records, parentActor, subscriptions), { code: 'CONTACT_NOT_VERIFIED' });
 await records.ref('contacts', parent.uid).set({ status: 'verified' });
 await request('api/api/parent/outreach-consent', 200, parent.token, { granted: true, consentVersion: 'v1' });
+const enrolment = await enrolSubscription(records, parentActor, subscriptions);
+assert.equal(enrolment.subscriptionSessionId, 'emulator-session');
+const subscriptionId = enrolment.subscriptionId;
+const providerSubscriptionId = `cf-${suffix}`;
+providerStatus = 'ACTIVE';
+await applyCashfreeWebhook(records, 'subscriptions', {
+  type: 'SUBSCRIPTION_STATUS_CHANGED',
+  data: { subscription_details: { subscription_id: subscriptionId, cf_subscription_id: providerSubscriptionId, subscription_status: providerStatus } },
+});
+await request('api/api/coach/fees', 200, coach.token, { period: cyclePeriod, amountPaise });
+const { id: cycleId } = await request('billingOperations/subscriptions/cycles', 200, undefined, { playerId, period: cyclePeriod, dueAt, cutoffAt });
+const cycle = await records.read<{ merchantPaymentId: string }>('cycles', cycleId);
+assert.ok(cycle);
+const { merchantPaymentId } = cycle;
+const reminder = `${cycleId}:precharge_parent_call`;
+await request(`api/api/coach/billing/outreach/${reminder}/approve`, 404, unrelatedCoach.token, {});
+await request(`api/api/coach/billing/outreach/${reminder}/approve`, 200, coach.token, {});
+await request(`billingOperations/relay/${reminder}/handoff`, 200, undefined, {});
+await request('api/api/parent/outreach-consent', 200, parent.token, { granted: false, consentVersion: 'v1' });
+await request(`billingOperations/relay/${reminder}/handoff`, 409, undefined, {});
+await request('api/api/parent/outreach-consent', 200, parent.token, { granted: true, consentVersion: 'v1' });
+await request(`api/api/parent/billing/cycles/${cycleId}/decision`, 200, parent.token, { decision: 'keep' });
+await runSubscriptionAction(records, `${cycleId}:schedule`, subscriptions);
+await runSubscriptionAction(records, `${cycleId}:schedule`, subscriptions);
+assert.equal(chargeCalls, 1);
+await assert.rejects(feeStore.reserveCheckout(parent.uid, `${playerId}-${cyclePeriod}`), { code: 'COLLECTION_IN_PROGRESS' });
 const subEvent = {
   type: 'subscription.payment', cycleId, providerSubscriptionId, merchantPaymentId, providerPaymentId: `sub-payment-${suffix}`,
   amountPaise, currency: 'INR', observedAt,
@@ -158,14 +201,40 @@ const subEvent = {
 await request('billingEvents/', 200, undefined, { ...subEvent, outcome: 'failed_final' });
 const recoveryId = `${cycleId}:recovery_parent_call_and_link`;
 assert.equal((await records.read<{ status: string }>('outreach', recoveryId))?.status, 'needs_approval');
-await request('billingEvents/', 200, undefined, { ...subEvent, outcome: 'succeeded' });
+await applyCashfreeWebhook(records, 'subscriptions', {
+  type: 'SUBSCRIPTION_PAYMENT_SUCCESS', event_time: observedAt,
+  data: { subscription_id: subscriptionId, cf_subscription_id: providerSubscriptionId, payment_id: merchantPaymentId,
+    cf_payment_id: subEvent.providerPaymentId, payment_type: 'CHARGE', payment_status: 'SUCCESS', payment_amount: amountPaise / 100, payment_currency: 'INR' },
+});
 assert.equal((await records.read<{ status: string }>('outreach', recoveryId))?.status, 'cancelled');
 const decisionPath = `api/api/parent/billing/cycles/${cycleId}/decision`;
 assert.equal((await request(decisionPath, 200, parent.token, { decision: 'cancel_subscription' })).subscriptionStatus, 'cancel_pending');
+await runSubscriptionAction(records, `${subscriptionId}:cancel`, subscriptions);
 const cancelEvent = {
   type: 'subscription.cancelled', eventKey: `cancel-${suffix}`, playerId, providerSubscriptionId, providerStatus: 'CANCELLED', observedAt,
 };
-assert.equal(await request('billingEvents/', 200, undefined, cancelEvent), 'applied');
 assert.equal(await request('billingEvents/', 200, undefined, cancelEvent), 'already_applied');
 assert.equal((await records.read<{ status: string }>('outreach', `${subscriptionId}:cancellation_coach_call`))?.status, 'needs_approval');
-console.log('Firebase emulator smoke passed for Auth, scoped fees and MCP, checkout, payments, subscriptions, outreach intents and refunds.');
+
+const payoutId = `demo-payout-${suffix}`;
+const beneficiaryId = 'sandbox-beneficiary';
+await records.ref('payouts', payoutId).create({ status: 'approved', approvedBy: 'operator', beneficiaryId, amountPaise: 15_000 });
+let payoutPosts = 0;
+let providerTransferId = '';
+const payouts = createCashfreePayouts(credentials, async (input, init) => {
+  const post = init?.method === 'POST';
+  if (post) {
+    payoutPosts += 1;
+    providerTransferId = JSON.parse(String(init.body)).transfer_id;
+  } else {
+    assert.equal(new URL(String(input)).searchParams.get('transfer_id'), providerTransferId);
+  }
+  return Response.json({ transfer_id: providerTransferId, cf_transfer_id: 'test-transfer', status: post ? 'RECEIVED' : 'SUCCESS',
+    status_code: post ? 'RECEIVED' : 'COMPLETED', transfer_amount: 150, beneficiary_details: { beneficiary_id: beneficiaryId },
+  });
+});
+await assert.rejects(runApprovedPayout(records, 'unapproved', 'submit', payouts), { code: 'PAYOUT_NOT_APPROVED' });
+assert.equal((await runApprovedPayout(records, payoutId, 'submit', payouts)).status, 'pending');
+assert.equal((await runApprovedPayout(records, payoutId, 'submit', payouts)).status, 'paid');
+assert.equal(payoutPosts, 1);
+console.log('Firebase emulator smoke passed for scoped MCP, webhook projections, subscriptions, consent-gated Relay handoffs, refunds, and Sandbox payouts with mocked providers.');

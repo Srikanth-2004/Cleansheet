@@ -10,12 +10,13 @@ This extends the [base contract](CONTRACT.md). It defines CleanSheet's interface
 | `POST /api/parent/contact/start` | Parent, `{phone, consentVersion}` | `{challengeId, maskedPhone, expiresAt}` | Backend / Secure ID |
 | `POST /api/parent/contact/verify` | Same parent, `{challengeId, otp}` | `{contactStatus, maskedPhone}` | Backend / Secure ID |
 | `POST /api/parent/outreach-consent` | Parent, `{granted, consentVersion}` | `{outreachConsent}` | Backend |
-| `POST /api/parent/subscription/enrol` | Linked parent; server resolves the configured plan | `{subscriptionId, mandateUrl, status}` | Cashfree |
+| `POST /api/parent/subscription/enrol` | Linked parent with a verified contact; server resolves the Sandbox on-demand plan | `{subscriptionId, subscriptionSessionId, mandateUrl, status}`. Use the session ID with Cashfree hosted checkout. | Backend / Cashfree |
 | `POST /api/parent/billing/cycles/[id]/decision` | Linked parent, `{decision: 'keep' or 'cancel_subscription'}` | `{cycleStatus, subscriptionStatus}` | Backend |
 | `GET /api/coach/billing/notifications` | Coach | `{notifications:[{id, kind, occurredAt, subjectLabel, amountPaise?}]}` | Backend |
 | `GET /api/coach/refunds` | Scoped coach | {refunds:[{caseId, refundId, status, amountPaise}]} | Backend |
 | `POST /api/coach/refunds/[caseId]/approve` | Scoped coach, `{amountPaise}` | `{refundId, status}` | Backend with Cashfree adapter |
-| `POST /api/webhooks/cashfree/pg` and `/api/webhooks/cashfree/subscriptions` | Authenticate raw provider payloads, deduplicate by provider and event | Provider acknowledgement | Cashfree parses, Backend projects |
+| `POST /api/webhooks/cashfree/pg` and `/api/webhooks/cashfree/subscriptions` | Authenticate raw provider payloads and idempotently apply matching events | Provider acknowledgement | Backend |
+| `POST /api/coach/billing/outreach/[actionId]/approve` | Coach scoped to the associated player | `{actionId, status}` | Backend / Relay |
 
 `subscription` is `{id,status,nextDueAt}` or `null`. `cycle` is `{id,period,amountPaise,dueAt,status,recoveryUrl}` or `null`. The link is nullable and is available only to the scoped parent while eligible. `outreachConsent` is `granted` or `withheld`. `contactStatus` is `unverified`, `pending`, `verified`, or `blocked`. The signed-in parent’s verified contact and permission are required before dispatching parent outreach for the pilot.
 

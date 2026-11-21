@@ -112,7 +112,7 @@ export function createBillingStore(records: Records): BillingStore {
         tx.create(ref('providerEvents', eventId), { kind: 'subscription_cancelled', subscriptionId: subscription.id, observedAt: event.observedAt });
         tx.create(ref('outreach', actionId), {
           actionId, kind: 'cancellation_coach_call', status: subscription.coachUid ? 'needs_approval' : 'blocked',
-          subscriptionId: subscription.id, targetRef: subscription.coachUid ?? null, runAfter: event.observedAt,
+          subscriptionId: subscription.id, playerId: event.playerId, targetRef: subscription.coachUid ?? null, runAfter: event.observedAt,
         });
         return 'applied';
       });
@@ -158,7 +158,7 @@ export async function applySubscriptionPayment(records: Records, event: Verified
         && subscription.status === 'active' && contact?.status === 'verified' && consent?.status === 'granted') {
         tx.create(ref('outreach', recoveryId), {
           actionId: recoveryId, kind: recoveryKind, status: 'needs_approval',
-          cycleId: cycle.id, targetRef: cycle.parentUid, runAfter: event.observedAt,
+          cycleId: cycle.id, playerId: cycle.playerId, targetRef: cycle.parentUid, runAfter: event.observedAt,
         });
       }
     }
@@ -173,7 +173,7 @@ export async function applySubscriptionPayment(records: Records, event: Verified
         providerSubscriptionId: event.providerSubscriptionId, merchantPaymentId: event.merchantPaymentId, occurredAt: event.observedAt,
       });
       tx.create(ref('notifications', feeId), paymentNotification(fee, event.observedAt));
-      if (recovery?.status === 'needs_approval') tx.update(ref('outreach', recoveryId), { status: 'cancelled' });
+      if (recovery && ['needs_approval', 'approved'].includes(recovery.status)) tx.update(ref('outreach', recoveryId), { status: 'cancelled' });
     }
     return 'applied';
   });
