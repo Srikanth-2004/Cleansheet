@@ -7,9 +7,9 @@ Start with the [Relay backend plan](../docs/BACKEND_RELAY.md), [Relay integratio
 | [CS-01 · Scaffold and deploy](CS-01-scaffold-and-deploy.md) | Backend | Minimal permitted scaffold | Repo and AWS account and deployment access | READY |
 | [CS-02 · Cognito and fee state](CS-02-auth-and-fee-state.md) | Backend after CS-01 | AWS stack, test identities, and written contract | CS-01 merge base and host | READY |
 | [CS-03 · Cashfree checkout](CS-03-cashfree-checkout.md) | Cashfree | Cashfree Sandbox and fake fee store | CS-01 host, CS-02 store, CS-05 checkout control | READY |
-| [CS-04 · Raz fee preview](CS-04-raz-fee-preview.md) | Sarvam | Sarvam key and sample clip | CS-01 host, CS-02 auth, CS-05 recording or typed input | READY |
-| [CS-05 · Coach and parent UI](CS-05-coach-and-parent-ui.md) | Frontend | Contract-shaped fixtures | CS-01 shell and real routes from CS-02, CS-03, and CS-04 | READY |
-| [CS-06 · Demo video](CS-06-demo-video.md) | Frontend | Script, captions, edit timeline, test export | CS-08 verified build | READY |
+| [CS-04 · Raz fee preview](CS-04-raz-fee-preview.md) | @jv-013 (Sarvam + Frontend) | Sarvam key and sample clip | CS-01 host, CS-02 auth, CS-05 recording or typed input | MERGEABLE |
+| [CS-05 · Coach and parent UI](CS-05-coach-and-parent-ui.md) | @jv-013 (Frontend) | Contract-shaped fixtures | CS-01 shell and real routes from CS-02, CS-03, and CS-04 | MERGEABLE |
+| [CS-06 · Demo video](CS-06-demo-video.md) | @jv-013 (Frontend) | Script, captions, edit timeline, test export | CS-08 verified build | CLAIMED |
 | [CS-07 · Pitch and submission](CS-07-pitch-and-submission.md) | Sarvam | Briefing, checklist, deck skeleton | CS-06 video and CS-08 release | READY |
 | [CS-08 · Release QA](CS-08-release-qa.md) | Backend, with Cashfree payment evidence | QA checklist and evidence template | CS-01 through CS-05 on one deploy | READY |
 | [CS-09 · Subscriptions lifecycle](CS-09-subscription-lifecycle.md) | Cashfree | Test mandate, provider status and event samples | CS-02 identity and CS-12 projection | READY |
@@ -22,3 +22,7 @@ Start with the [Relay backend plan](../docs/BACKEND_RELAY.md), [Relay integratio
 **Status.** `READY → CLAIMED → MERGEABLE → VERIFIED`. Mark `MERGEABLE` when isolated checks pass or a non-code asset is ready for review. Mark `VERIFIED` when the ticket’s deployed or deliverable checks pass. Record access blockers against the affected ticket and use the fixture or start an unowned task when possible.
 
 **Handoff.** Post `CS-## | owner | status | branch/PR/asset | check and observed result | blocker or next consumer`. Each owner updates their ticket. Backend coordinates release evidence, and the relevant builder owns any fix raised by QA.
+
+- `CS-04 | @jv-013 | MERGEABLE | branch: cs-05-coach-and-parent-ui | Sarvam saaras:v4 + sarvam-105b wired in src/lib/providers/sarvam.ts & AWS Lambda (src/lambda.ts); smoke:sarvam & npm test passed | Blocker for VERIFIED: AWS deployment secret (SarvamSecretArn) & live spoken mic clip test`
+- `CS-05 | @jv-013 | MERGEABLE | branch: cs-05-coach-and-parent-ui | web:typecheck, web:build & live Chrome browser walkthrough passed | Blocker for VERIFIED: deployed AWS API + Cashfree PG checkout/verify routes`
+- `CS-06 | @jv-013 | CLAIMED | asset: deliverables/release/cs-06-video-timeline.md | 65s storyboard, captions & ffmpeg export template ready | Waiting on CS-08 verified deployed build`
