@@ -13,6 +13,7 @@ import { createDynamoBillingStore } from './lib/server/dynamo-billing.js';
 import { createDynamoRefundStore } from './lib/server/dynamo-refunds.js';
 import { createDynamoFeeStore } from './lib/server/dynamo-store.js';
 import { getCoachFeeSummaryViaMcp } from './lib/server/fee-mcp.js';
+import { createCashfreeSandboxOrder, verifyCashfreeSandboxOrder } from './lib/providers/cashfree-pg.js';
 import { HttpError, json, parseObject, success } from './lib/server/http.js';
 
 async function handleApi(
@@ -42,6 +43,32 @@ async function handleApi(
     }
     const { refundId, status } = await makeRefundStore().approveRefund(actor, refundApproval[1], amountPaise);
     return success({ refundId, status }, status === 'processing' ? 202 : 200);
+  }
+  const checkoutRequest = /^POST \/api\/fees\/([a-zA-Z0-9_-]{1,128})\/checkout$/.exec(path);
+  if (checkoutRequest) {
+    const actor = await getActor(event, store, 'parent');
+    const checkout = await store.reserveCheckout(actor.uid, checkoutRequest[1]);
+    const appUrl = process.env.APP_URL;
+    if (!appUrl) throw new HttpError(503, 'APP_URL_NOT_CONFIGURED', 'The payment return URL is not configured.');
+    let returnUrl: URL;
+    try {
+      returnUrl = new URL('/parent', appUrl);
+    } catch {
+      throw new HttpError(503, 'APP_URL_NOT_CONFIGURED', 'The payment return URL is not configured.');
+    }
+    returnUrl.searchParams.set('payment', 'return');
+    returnUrl.searchParams.set('order_id', checkout.orderId);
+    return success(await createCashfreeSandboxOrder(checkout, returnUrl.toString()));
+  }
+  const verifyRequest = /^POST \/api\/orders\/([a-zA-Z0-9_-]{1,128})\/verify$/.exec(path);
+  if (verifyRequest) {
+    const actor = await getActor(event, store, 'parent');
+    const checkout = await store.getCheckout(actor.uid, verifyRequest[1]);
+    const verification = await verifyCashfreeSandboxOrder(checkout);
+    if (verification.status === 'processing') {
+      return success({ feeId: checkout.feeId, feeStatus: 'processing' }, 202);
+    }
+    return success(await store.applyVerifiedPayment(checkout.orderId, verification.providerPaymentId));
   }
   switch (path) {
     case 'GET /api/me': {
