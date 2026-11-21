@@ -14,4 +14,4 @@
 - [ ] Ambiguous or invalid input prompts a retry and creates zero fee records.
 - [ ] Share the language, sample utterance, response, and observed test outcome with [CS-05](CS-05-coach-and-parent-ui.md) and [CS-08](CS-08-release-qa.md).
 
-Work can start independently of [CS-03](CS-03-cashfree-checkout.md). Hosted acceptance uses the [CS-01](CS-01-scaffold-and-deploy.md) deploy, the [CS-02](CS-02-firebase-and-fee-state.md) auth helper, and the CS-05 inputs. [Sarvam tool-calling reference](https://docs.sarvam.ai/api/token-factory/chat-completions#tool-calling-function-calling)
+Work can start independently of [CS-03](CS-03-cashfree-checkout.md). Hosted acceptance uses the [CS-01](CS-01-scaffold-and-deploy.md) deploy, the [CS-02](CS-02-auth-and-fee-state.md) auth helper, and the CS-05 inputs. [Sarvam tool-calling reference](https://docs.sarvam.ai/api/token-factory/chat-completions#tool-calling-function-calling)

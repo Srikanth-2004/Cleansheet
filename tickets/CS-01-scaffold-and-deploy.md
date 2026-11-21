@@ -4,9 +4,9 @@
 
 ## Work
 
-- Create one minimal Next.js App Router and TypeScript scaffold in the shared repo. Own the root config, lockfile, `.env.example`, and Vercel project setup. Publish the buildable scaffold early and give ownership of the UI shell to CS-05 after handoff.
-- Document the required configuration names for browser Firebase, server Firebase Admin, Sarvam, and Cashfree Sandbox. Configure credentials through the intended host and keep secrets out of the repo.
-- Give builders the local start/build commands, merge-base commit, and the intended Vercel URL. Coordinate the Firebase sign-in domain with CS-02 and checkout return URL with CS-03.
+- Create one minimal TypeScript Lambda scaffold in the shared repo. Own the root config, lockfile, `.env.example`, and the AWS SAM deployment template. Publish the buildable scaffold early and give ownership of the UI shell to CS-05 after handoff.
+- Document the required configuration names for Cognito browser configuration, DynamoDB, Sarvam, and Cashfree Sandbox. Configure credentials through the intended host and keep secrets out of the repo.
+- Give builders the local start/build commands, merge-base commit, and the intended Lambda app URL. Coordinate the Cognito sign-in domain with CS-02 and checkout return URL with CS-03.
 
 ## Acceptance and handoff
 

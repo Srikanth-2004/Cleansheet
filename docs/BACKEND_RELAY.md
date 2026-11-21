@@ -6,7 +6,7 @@ This is the active integration plan for monthly fees. The [existing HTTP contrac
 
 | Component | Responsibility |
 |---|---|
-| CleanSheet backend and Firestore | Authorise the coach or linked adult parent, link Cashfree references to one fee cycle, record decisions and provider state, and make financial changes and notifications idempotent. |
+| CleanSheet backend and DynamoDB | Authorise the coach or linked adult parent, link Cashfree references to one fee cycle, record decisions and provider state, and make financial changes and notifications idempotent. |
 | Cashfree Relay | Review Cashfree payment records, run approved pre-charge and recovery outreach where enabled, resend the eligible retry link, call the coach on a confirmed cancellation where supported, and triage refund cases. |
 | Cashfree Subscriptions | Authorise a parent mandate, schedule or execute a due payment, cancel future charges, and expose verified mandate, payment, and subscription refund outcomes. |
 | Cashfree Payment Gateway | Run one-time hosted checkout and the eligible recovery link, verify payment status, and create and track refunds for PG payments. |
@@ -25,7 +25,7 @@ Cashfree and Sarvam owners work these checks in parallel. Record `verified`, `bl
 
 | Trigger | Action and record of truth | Parent or coach experience |
 |---|---|---|
-| Enrolment | Firebase identifies the signed-in adult linked to the player. Capture Secure ID consent and verify the nominated test phone. Collect separate permission for outreach. The parent authorises the revocable mandate on Cashfree's hosted flow. Project `active` only after verified provider status. | Parent sees verification and mandate status. |
+| Enrolment | Cognito identifies the signed-in adult linked to the player. Capture Secure ID consent and verify the nominated test phone. Collect separate permission for outreach. The parent authorises the revocable mandate on Cashfree's hosted flow. Project `active` only after verified provider status. | Parent sees verification and mandate status. |
 | Monthly fee is coming due | Create a due cycle from the stored monthly plan before submitting a debit. Queue the approved Relay voice workflow to explain amount and due date. Bind the action to the cycle and direct the parent to an authenticated decision screen. | Parent chooses **Keep this cycle** or **Cancel subscription**. A failed or unanswered call leaves the cycle awaiting a decision and no debit is submitted for the pilot. |
 | Keep confirmed | Recheck that the mandate is active and no cancellation or open collection is pending. Release one on-demand charge for the cycle using Cashfree's supported notice and scheduling flow. For controlled UPI charging, send the pre-debit notice and wait at least 24 hours before execution as documented. | Parent sees scheduled or processing and retains access to cancellation. |
 | Cancel requested | Immediately block new charge submission for the mandate. Cancel the mandate through Cashfree and handle an already-scheduled charge separately using the applicable cancellation endpoint and cutoff. Reconcile any in-flight result. | Parent sees cancellation pending. After provider-confirmed mandate cancellation, queue one coach voice call via the approved Relay/Sarvam route. If calling is unavailable, show the cancellation and flag the call as unavailable. |
@@ -33,7 +33,7 @@ Cashfree and Sarvam owners work these checks in parallel. Record `verified`, `bl
 | Eligible payment failure | Check latest status and any provider retry schedule first. Once the attempt is terminal and recovery is approved, Relay calls the parent and re-shares one active, expiring Cashfree payment link where supported. Use a distinct link or order mapped to the same cycle. Avoid offering PG recovery while a subscription debit or retry can still settle. | Parent gets the verified retry path. Coach sees failed or recovery pending until provider success. |
 | Refund request or outcome | Relay reviews the relevant payment and opens a case. A coach confirms the scope and amount in CleanSheet before the backend requests an eligible refund on the original rail. Verify the refund with Cashfree and record it separately from the original payment. | Coach sees requested, processing, refunded, or failed. Keep original payment history and update net collected only on confirmed refund. |
 
-The pilot uses a revocable **on-demand** mandate so the app can wait for an authenticated choice before even submitting a charge. A confirmation expires at the cycle cutoff. Secure ID proves contact verification within its supported scope. Firebase and the server-owned link still control account access. A voice classification can suggest an intent. An authenticated parent confirmation is needed to keep or cancel billing, and a coach confirmation is needed to issue a refund.
+The pilot uses a revocable **on-demand** mandate so the app can wait for an authenticated choice before even submitting a charge. A confirmation expires at the cycle cutoff. Secure ID proves contact verification within its supported scope. Cognito and the server-owned link still control account access. A voice classification can suggest an intent. An authenticated parent confirmation is needed to keep or cancel billing, and a coach confirmation is needed to issue a refund.
 
 ## Backend boundaries and contracts
 

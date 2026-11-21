@@ -1,11 +1,11 @@
-# CS-02 · Firebase access, seed, and fee state
+# CS-02 · Cognito access, seed, and fee state
 
-**Owner** [Backend](../roles/02-backend.md) · **Start dependency** Firebase project and test identities
+**Owner** [Backend](../roles/02-backend.md) · **Start dependency** AWS stack and test identities
 
 ## Work
 
-- Start with the written [contract](../docs/CONTRACT.md). Own `src/contracts/`, the server-side Firebase and fee store modules, `scripts/seed-demo.*`, and the identity, fee, and summary routes listed for CS-02.
-- Set up Google sign-in for the nominated test users and the deployed host. Verify tokens server-side and enforce coach and linked-parent access for each operation. Use Firestore transactions for unique fee creation, checkout reservation, and payment application.
+- Start with the written [contract](../docs/CONTRACT.md). Own `src/contracts/`, the server-side Cognito authorisation and DynamoDB fee store modules, `scripts/seed-demo.*`, and the identity, fee, and summary routes listed for CS-02.
+- Set up Cognito hosted sign-in for the nominated test users and the deployed host. Verify tokens server-side and enforce coach and linked-parent access for each operation. Use DynamoDB transactions for unique fee creation, checkout reservation, and payment application.
 - Seed one unpaid smoke fee and a fresh scenario for the final run. Seed a new scenario with distinct provider references if QA or filming needs another complete payment. Keep reset and seed commands private.
 - Implement the auth helper and the three payment store functions in the contract. Keep provider calls outside store transaction callbacks.
 

@@ -4,8 +4,8 @@ Start with the [Relay backend plan](../docs/BACKEND_RELAY.md), [Relay integratio
 
 | Ticket | Suggested owner | Start independently with | Needed for live completion | Initial status |
 |---|---|---|---|---|
-| [CS-01 · Scaffold and deploy](CS-01-scaffold-and-deploy.md) | Backend | Minimal permitted scaffold | Repo and Vercel access | READY |
-| [CS-02 · Firebase and fee state](CS-02-firebase-and-fee-state.md) | Backend after CS-01 | Firebase project, test identities, and written contract | CS-01 merge base and host | READY |
+| [CS-01 · Scaffold and deploy](CS-01-scaffold-and-deploy.md) | Backend | Minimal permitted scaffold | Repo and AWS account and deployment access | READY |
+| [CS-02 · Cognito and fee state](CS-02-auth-and-fee-state.md) | Backend after CS-01 | AWS stack, test identities, and written contract | CS-01 merge base and host | READY |
 | [CS-03 · Cashfree checkout](CS-03-cashfree-checkout.md) | Cashfree | Cashfree Sandbox and fake fee store | CS-01 host, CS-02 store, CS-05 checkout control | READY |
 | [CS-04 · Raz fee preview](CS-04-raz-fee-preview.md) | Sarvam | Sarvam key and sample clip | CS-01 host, CS-02 auth, CS-05 recording or typed input | READY |
 | [CS-05 · Coach and parent UI](CS-05-coach-and-parent-ui.md) | Frontend | Contract-shaped fixtures | CS-01 shell and real routes from CS-02, CS-03, and CS-04 | READY |

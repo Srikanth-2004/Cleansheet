@@ -18,7 +18,7 @@ This extends the [base contract](CONTRACT.md). It defines CleanSheet's interface
 
 `subscription` is `{id,status,nextDueAt}` or `null`. `cycle` is `{id,period,amountPaise,dueAt,status,recoveryUrl}` or `null`. The link is nullable and is available only to the scoped parent while eligible. `outreachConsent` is `granted` or `withheld`. `contactStatus` is `unverified`, `pending`, `verified`, or `blocked`. The signed-in parent’s verified contact and permission are required before dispatching parent outreach for the pilot.
 
-Use app subscription states `authorising`, `active`, `cancel_pending`, `cancelled`, and `needs_review`. Use cycle states `awaiting_decision`, `charge_scheduled`, `processing`, `paid`, `failed`, `recovery_available`, `closed`, and `needs_review`. Where supported, keep provider webhooks and scheduled jobs separate from browser routes. Browser routes retain the base Firebase auth and response envelope.
+Use app subscription states `authorising`, `active`, `cancel_pending`, `cancelled`, and `needs_review`. Use cycle states `awaiting_decision`, `charge_scheduled`, `processing`, `paid`, `failed`, `recovery_available`, `closed`, and `needs_review`. Where supported, keep provider webhooks and scheduled jobs separate from browser routes. Browser routes retain the Cognito access-token authentication and response envelope.
 
 ## Provider and agent handoffs
 

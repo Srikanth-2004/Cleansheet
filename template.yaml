@@ -1,0 +1,114 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: CleanSheet TypeScript web app and API on AWS Lambda
+
+Parameters:
+  ScenarioId:
+    Type: String
+    Default: smoke
+    AllowedPattern: '[a-zA-Z0-9_-]{1,64}'
+  CognitoDomainPrefix:
+    Type: String
+    AllowedPattern: '[a-z0-9][a-z0-9-]{0,61}[a-z0-9]'
+  CognitoCallbackUrl:
+    Type: String
+    Default: http://localhost:3000/
+
+Resources:
+  DemoTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: pk, AttributeType: S }
+        - { AttributeName: sk, AttributeType: S }
+      KeySchema:
+        - { AttributeName: pk, KeyType: HASH }
+        - { AttributeName: sk, KeyType: RANGE }
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      UsernameAttributes: [email]
+
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Ref CognitoDomainPrefix
+      UserPoolId: !Ref UserPool
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      PreventUserExistenceErrors: ENABLED
+      SupportedIdentityProviders: [COGNITO]
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid, email]
+      CallbackURLs: [!Ref CognitoCallbackUrl]
+      LogoutURLs: [!Ref CognitoCallbackUrl]
+
+  HttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: '$default'
+      Auth:
+        Authorizers:
+          Cognito:
+            IdentitySource: $request.header.Authorization
+            JwtConfiguration:
+              issuer: !Sub 'https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${UserPool}'
+              audience: [!Ref UserPoolClient]
+            AuthorizationScopes: [openid]
+
+  WebFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Runtime: nodejs22.x
+      Handler: lambda.handler
+      CodeUri: dist/
+      MemorySize: 256
+      Timeout: 15
+      Environment:
+        Variables:
+          CLEANSHEET_DYNAMODB_TABLE: !Ref DemoTable
+          CLEANSHEET_SCENARIO_ID: !Ref ScenarioId
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action: [dynamodb:GetItem, dynamodb:Query, dynamodb:PutItem, dynamodb:UpdateItem]
+              Resource: !GetAtt DemoTable.Arn
+      Events:
+        Root:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: '/', Method: GET }
+        Assets:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: '/assets/{proxy+}', Method: GET }
+        Health:
+          Type: HttpApi
+          Properties: { ApiId: !Ref HttpApi, Path: '/health', Method: GET }
+        PrivateApi:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref HttpApi
+            Path: '/api/{proxy+}'
+            Method: ANY
+            Auth:
+              Authorizer: Cognito
+
+Outputs:
+  AppUrl:
+    Value: !Sub 'https://${HttpApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/'
+  DynamoTable:
+    Value: !Ref DemoTable
+  CognitoUserPoolId:
+    Value: !Ref UserPool
+  CognitoClientId:
+    Value: !Ref UserPoolClient
+  CognitoDomain:
+    Value: !Sub 'https://${CognitoDomainPrefix}.auth.${AWS::Region}.amazoncognito.com'

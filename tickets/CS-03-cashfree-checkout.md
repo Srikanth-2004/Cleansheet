@@ -15,4 +15,4 @@
 - [ ] Verification applies one successful payment. Retrying verification keeps totals unchanged. An unresolved or mismatched provider result cannot mark the fee paid.
 - [ ] Share the observed state, masked provider ID, and return path with [CS-05](CS-05-coach-and-parent-ui.md) and [CS-08](CS-08-release-qa.md).
 
-Provider work is independent of [CS-04](CS-04-raz-fee-preview.md). The deployed checkpoint uses [CS-01](CS-01-scaffold-and-deploy.md), [CS-02](CS-02-firebase-and-fee-state.md), and the checkout control in CS-05. [Cashfree hosted checkout reference](https://www.cashfree.com/docs/payments/online/web/redirect)
+Provider work is independent of [CS-04](CS-04-raz-fee-preview.md). The deployed checkpoint uses [CS-01](CS-01-scaffold-and-deploy.md), [CS-02](CS-02-auth-and-fee-state.md), and the checkout control in CS-05. [Cashfree hosted checkout reference](https://www.cashfree.com/docs/payments/online/web/redirect)

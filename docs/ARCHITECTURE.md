@@ -13,7 +13,7 @@ flowchart LR
     App -->|Checkout, recovery link or refund| PG["Cashfree Payment Gateway"]
     Sub -->|Signed outcome| App
     PG -->|Signed outcome| App
-    App <-->|Billing state and auditable actions| Store[("Firestore")]
+    App <-->|Billing state and auditable actions| Store[("DynamoDB")]
     App -->|Approved action via supported setup| Relay["Cashfree Relay with Sarvam voice"]
     Relay -->|Reminder or eligible retry| Parent
     Relay -->|Confirmed cancellation call| Coach
@@ -28,16 +28,16 @@ The Relay route and observed outcomes depend on merchant access. The backend own
 flowchart LR
     Coach["Coach UI"]
     Parent["Parent UI"]
-    Auth["Firebase Auth"]
+    Auth["Amazon Cognito"]
 
-    subgraph App["Next.js on Vercel"]
+    subgraph App["TypeScript on AWS Lambda"]
         Raz["Raz fee preview"]
         Fees["Fee creation and dashboard"]
         Payment["Checkout and payment verification"]
     end
 
     Sarvam["Sarvam speech-to-text and tool calling"]
-    DB[("Firestore: roles, fee records, payment state")]
+    DB[("DynamoDB: roles, fee records, payment state")]
     Cashfree["Cashfree Sandbox"]
 
     Coach -->|Sign in| Auth
@@ -70,7 +70,7 @@ flowchart TD
     Start --> UI["Frontend · CS-05 build both screens with fixtures"]
     Start --> Voice["Sarvam · CS-04 test Raz with a sample clip"]
 
-    Base -->|Merge base| Store["CS-02 · Firebase access and seeded fee state"]
+    Base -->|Merge base| Store["CS-02 · Cognito access and seeded fee state"]
     Store --> Smoke["1:30 PM target · Verify one deployed sandbox checkout"]
     Pay --> Smoke
     UI -->|Checkout screen| Smoke
