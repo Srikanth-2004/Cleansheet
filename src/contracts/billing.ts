@@ -1,6 +1,7 @@
 export type Role = 'coach' | 'parent';
 export type FeeStatus = 'unpaid' | 'processing' | 'paid';
 export type Currency = 'INR';
+export type PaymentRail = 'pg' | 'subscription';
 
 export interface Fee {
   id: string;
@@ -11,6 +12,8 @@ export interface Fee {
   currency: Currency;
   status: FeeStatus;
   providerPaymentId?: string;
+  paymentRail?: PaymentRail;
+  refundedPaise?: number;
 }
 
 export interface Customer {
@@ -67,11 +70,11 @@ export function isPeriod(value: unknown): value is string {
 export function summariseFee(fee: Fee | undefined) {
   const expectedPaise = fee?.amountPaise ?? 0;
   const paid = fee?.status === 'paid';
-  const collectedPaise = paid ? expectedPaise : 0;
+  const collectedPaise = paid ? expectedPaise - (fee.refundedPaise ?? 0) : 0;
   return {
     expectedPaise,
     collectedPaise,
-    outstandingPaise: expectedPaise - collectedPaise,
+    outstandingPaise: paid ? 0 : expectedPaise,
     paidFeeCount: paid ? 1 : 0,
   };
 }

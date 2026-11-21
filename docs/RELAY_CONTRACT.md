@@ -13,6 +13,7 @@ This extends the [base contract](CONTRACT.md). It defines CleanSheet's interface
 | `POST /api/parent/subscription/enrol` | Linked parent; server resolves the configured plan | `{subscriptionId, mandateUrl, status}` | Cashfree |
 | `POST /api/parent/billing/cycles/[id]/decision` | Linked parent, `{decision: 'keep' or 'cancel_subscription'}` | `{cycleStatus, subscriptionStatus}` | Backend |
 | `GET /api/coach/billing/notifications` | Coach | `{notifications:[{id, kind, occurredAt, subjectLabel, amountPaise?}]}` | Backend |
+| `GET /api/coach/refunds` | Scoped coach | {refunds:[{caseId, refundId, status, amountPaise}]} | Backend |
 | `POST /api/coach/refunds/[caseId]/approve` | Scoped coach, `{amountPaise}` | `{refundId, status}` | Backend with Cashfree adapter |
 | `POST /api/webhooks/cashfree/pg` and `/api/webhooks/cashfree/subscriptions` | Authenticate raw provider payloads, deduplicate by provider and event | Provider acknowledgement | Cashfree parses, Backend projects |
 
@@ -35,6 +36,10 @@ Keep creates one **schedule_charge** intent and reserves the subscription collec
 | Backend | Relay / Sarvam | Approved action `{actionId, kind, merchantRef, cycleRef?, targetRef, language, runAfter}`. `kind` is `precharge_parent_call`, `recovery_parent_call_and_link` or `cancellation_coach_call`. Resolve delivery data server-side when dispatching. Refund reviews can create a case suggestion through the documented merchant workflow. |
 | Relay / Sarvam | Backend | `{actionId, providerActionId?, outcome, observedAt}` where outcome is `queued`, `delivered`, `failed`, `unknown`, or `blocked`. Implement an incoming route only when the vendor authentication, schema, and correlation are verified. A dashboard result may be logged with an auditable reference. |
 | Backend / MCP | Sarvam | `get_fee_summary(period)` accepts the month. Bind the verified coach in server context and return only authorised totals. See the [MCP handoff](../AWS_DEPLOY.md#coach-mcp-tool). |
+
+## Backend handoff status
+
+The backend has subscription payment projection, consent-gated recovery intents, and scoped refund approval and reconciliation. See the [adapter and endpoint handoffs](../AWS_DEPLOY.md#billing-and-refund-handoffs). Cashfree still supplies verified events and sends provider refund requests in response to the recorded action. Relay still owns approved outreach and link delivery.
 
 ## Fixture scenarios
 

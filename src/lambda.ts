@@ -1,9 +1,11 @@
 import type { APIGatewayProxyEventV2WithJWTAuthorizer as Event, APIGatewayProxyStructuredResultV2 as Response } from 'aws-lambda';
 import { isPeriod, type FeeStore } from './contracts/billing.js';
+import type { RefundStore } from './contracts/payment-events.js';
 import type { BillingStore } from './contracts/relay.js';
 import { getActor } from './lib/server/auth.js';
 import { createContactVerification } from './lib/server/contact-verification.js';
 import { createDynamoBillingStore } from './lib/server/dynamo-billing.js';
+import { createDynamoRefundStore } from './lib/server/dynamo-refunds.js';
 import { createDynamoFeeStore } from './lib/server/dynamo-store.js';
 import { getCoachFeeSummaryViaMcp } from './lib/server/fee-mcp.js';
 import { HttpError, json, parseObject, success } from './lib/server/http.js';
@@ -13,6 +15,7 @@ async function handleApi(
   store: FeeStore,
   makeBillingStore: () => BillingStore,
   makeContactVerification: typeof createContactVerification,
+  makeRefundStore: () => RefundStore,
 ): Promise<Response> {
   const path = `${event.requestContext.http.method} ${event.rawPath}`;
   const cycleDecision = /^POST \/api\/parent\/billing\/cycles\/([a-zA-Z0-9_-]{1,128})\/decision$/.exec(path);
@@ -23,6 +26,16 @@ async function handleApi(
       throw new HttpError(400, 'INVALID_DECISION', 'Choose keep or cancel subscription.');
     }
     return success(await makeBillingStore().recordParentDecision(actor, cycleDecision[1], decision));
+  }
+  const refundApproval = /^POST \/api\/coach\/refunds\/([a-zA-Z0-9_-]{1,128})\/approve$/.exec(path);
+  if (refundApproval) {
+    const actor = await getActor(event, store, 'coach');
+    const { amountPaise } = parseObject(requestBody(event));
+    if (typeof amountPaise !== 'number' || !Number.isSafeInteger(amountPaise) || amountPaise <= 0) {
+      throw new HttpError(400, 'INVALID_AMOUNT', 'The refund must be a positive integer in paise.');
+    }
+    const { refundId, status } = await makeRefundStore().approveRefund(actor, refundApproval[1], amountPaise);
+    return success({ refundId, status }, status === 'processing' ? 202 : 200);
   }
   switch (path) {
     case 'GET /api/me': {
@@ -84,6 +97,10 @@ async function handleApi(
       await getActor(event, store, 'coach');
       return success({ notifications: await store.listNotifications() });
     }
+    case 'GET /api/coach/refunds': {
+      const actor = await getActor(event, store, 'coach');
+      return success({ refunds: await makeRefundStore().listCoachRefunds(actor) });
+    }
     default:
       throw new HttpError(404, 'ROUTE_NOT_FOUND', 'This route is not available.');
   }
@@ -106,12 +123,13 @@ export function createHandler(
   makeStore = createDynamoFeeStore,
   makeBillingStore = createDynamoBillingStore,
   makeContactVerification = createContactVerification,
+  makeRefundStore: () => RefundStore = createDynamoRefundStore,
 ) {
   return async (event: Event): Promise<Response> => {
     try {
       const { method } = event.requestContext.http;
       if (method === 'GET' && event.rawPath === '/health') return success({ service: 'cleansheet' });
-      if (event.rawPath.startsWith('/api/')) return await handleApi(event, makeStore(), makeBillingStore, makeContactVerification);
+      if (event.rawPath.startsWith('/api/')) return await handleApi(event, makeStore(), makeBillingStore, makeContactVerification, makeRefundStore);
       throw new HttpError(404, 'ROUTE_NOT_FOUND', 'This route is not available.');
     } catch (error) {
       if (error instanceof HttpError) return json(error.status, { ok: false, error: { code: error.code, message: error.message } });

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import type { APIGatewayProxyEventV2WithJWTAuthorizer } from 'aws-lambda';
 import type { Actor, Fee, FeeStore } from '../src/contracts/billing.js';
+import type { RefundStore } from '../src/contracts/payment-events.js';
 import type { BillingStore } from '../src/contracts/relay.js';
 import { createHandler } from '../src/lambda.js';
 
@@ -28,7 +29,7 @@ function event(path: string, uid?: string, tokenUse = 'access'): APIGatewayProxy
   };
 }
 
-function fixture(billing?: BillingStore) {
+function fixture(billing?: BillingStore, refunds?: RefundStore) {
   const unavailable = async () => { throw new Error('Unexpected store operation'); };
   const store: FeeStore = {
     findActor: async uid => uid === coach.uid ? coach : uid === parent.uid ? parent : undefined,
@@ -39,7 +40,7 @@ function fixture(billing?: BillingStore) {
     getCheckout: unavailable,
     applyVerifiedPayment: unavailable,
   };
-  return createHandler(() => store, billing ? () => billing : undefined);
+  return createHandler(() => store, billing ? () => billing : undefined, undefined, refunds ? () => refunds : undefined);
 }
 
 test('the public health endpoint needs no store configuration', async () => {
@@ -97,4 +98,26 @@ test('an authenticated parent can record a cancellation while a coach cannot', a
   assert.deepEqual(JSON.parse((await handler(request(parent.uid))).body ?? ''), {
     ok: true, data: { cycleStatus: 'awaiting_decision', subscriptionStatus: 'cancel_pending' },
   });
+});
+
+test('refund approval asks the scoped backend store to queue a provider request', async () => {
+  const handler = fixture(undefined, {
+    listCoachRefunds: async () => [],
+    approveRefund: async (actor, caseId, amountPaise) => {
+      assert.equal(actor.uid, coach.uid);
+      assert.equal(caseId, 'case-01');
+      assert.equal(amountPaise, 50000);
+      return { caseId, amountPaise, refundId: 'refund-01', status: 'processing' };
+    },
+  });
+  const request = (uid: string) => {
+    const requestEvent = event('/api/coach/refunds/case-01/approve', uid);
+    requestEvent.requestContext.http.method = 'POST';
+    requestEvent.body = JSON.stringify({ amountPaise: 50000 });
+    return requestEvent;
+  };
+  assert.equal((await handler(request(parent.uid))).statusCode, 403);
+  const result = await handler(request(coach.uid));
+  assert.equal(result.statusCode, 202);
+  assert.deepEqual(JSON.parse(result.body ?? ''), { ok: true, data: { refundId: 'refund-01', status: 'processing' } });
 });
